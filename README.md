@@ -1,73 +1,81 @@
 # FEMPy
 
+**English** | [Magyar](README.hu.md)
+
 [![CI](https://github.com/primuszp/FEMPy/actions/workflows/ci.yml/badge.svg)](https://github.com/primuszp/FEMPy/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/)
 [![Version](https://img.shields.io/badge/version-1.1.0-2E86C1.svg)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-27AE60.svg)](LICENSE)
 
-Olvasható, validált és memóriahatékony kétdimenziós végeselemes könyvtár
-Pythonhoz. A FEMPy kis, következetes API-val kapcsolja össze a geometriát, a
-hálózást, a lineáris rugalmassági modellt, a ritka megoldót és a tudományos
-utófeldolgozást.
+A readable, validated, and memory-efficient two-dimensional finite element
+library for Python. FEMPy connects geometry, meshing, linear elasticity,
+sparse solvers, and scientific post-processing through a small, consistent
+API.
 
-A projekt oktatási célú, de a numerikus megvalósítás mérnöki szemléletű:
-ellenőrzött elemek, konzisztens peremterhek, ritka mátrixok, solverdiagnosztika,
-klasszikus benchmarkok és ParaView-kompatibilis export tartozik hozzá.
+FEMPy is designed for teaching, but its numerical implementation follows
+sound engineering practice: verified elements, consistent boundary loads,
+sparse matrices, solver diagnostics, classical benchmarks, and
+ParaView-compatible export are included.
 
-![T6 végeselemes elemzés magyar tudományos ábrákkal](examples/t6_report_hu.png)
+![T6 finite element analysis with English scientific plots](examples/t6_report_en.png)
 
-Gyors dokumentációs hivatkozások:
+Documentation:
 
-- [API-referencia](docs/API.md)
-- [részletes kódmagyarázat](docs/KODMAGYARAZAT.md)
-- [klasszikus validáció](docs/VALIDACIO.md)
-- [futtatható példák](examples/README.md)
-- [változásnapló](CHANGELOG.md)
+- [API reference](docs/API.md)
+- [detailed implementation guide](docs/KODMAGYARAZAT.md)
+- [classical validation](docs/VALIDACIO.md)
+- [runnable examples](examples/README.md)
+- [changelog](CHANGELOG.md)
 
-## Miért FEMPy?
+> The detailed documentation currently contains Hungarian explanations. The
+> public API names, type hints, equations, and runnable examples are
+> language-independent.
 
-- **Tanulható:** a fő numerikus lépések részletes magyar docstringet és
-  kódmagyarázatot kaptak.
-- **Egységes:** a strukturált és a Gmsh-háló ugyanazzal a `Mesh`–`Model`–
-  `AnalysisResult` API-val használható.
-- **Másodrendű:** a Triangle3 és Quad4 mellett teljes hatcsomópontos Triangle6
-  (T6) elem is elérhető.
-- **Memóriatakarékos:** a globális rendszer SciPy CSR ritka mátrix, a normál
-  megoldási út közvetlenül a redukált rendszert állítja össze.
-- **Ellenőrzött:** a CI három Python-verzión futtatja a teszteket, a klasszikus
-  FEM-benchmarkokat, a lintet és a csomagépítést.
-- **Publikálható ábrák:** magyar és angol számformázás, mérnöki kitevők,
-  mértékegységek és szabványos feszültségjelölések használhatók.
+## Why FEMPy?
 
-## Képességek
+- **Easy to learn:** the numerical stages are kept explicit and the code is
+  documented in detail.
+- **Consistent:** structured and Gmsh meshes use the same `Mesh`–`Model`–
+  `AnalysisResult` workflow.
+- **Second-order capable:** Triangle6 (T6) is available alongside Triangle3
+  and Quad4.
+- **Memory-efficient:** the global system is stored as a SciPy CSR sparse
+  matrix, and the standard solve path assembles the reduced system directly.
+- **Verified:** continuous integration tests the library, classical FEM
+  benchmarks, formatting, and package build on three Python versions.
+- **Publication-ready plots:** English and Hungarian number formatting,
+  engineering exponents, physical units, and standard stress symbols are
+  supported.
 
-| Terület | Támogatás |
+## Capabilities
+
+| Area | Support |
 |---|---|
-| Fizikai modell | 2D lineáris izotróp rugalmasság |
-| Feltétel | síkfeszültség, síkalakváltozás |
-| Elemek | Triangle3 (CST), Triangle6 (T6), Quad4 |
-| Integrálás | T3 súlyponti, T6 7 pontos Dunavant, Q4 2×2 Gauss |
-| Háló | strukturált T3/T6/Q4, modern Gmsh T3/T6/Q4 |
-| Geometria | téglalap, sokszög, kör, körív, lyukak, helyi finomítás |
-| Peremfeltétel | fix vagy előírt `ux`/`uy`, név szerinti teljes perem |
-| Terhelés | csomóponti erő, traction, normális nyomás, testgyorsulás |
-| Solver | ritka direkt, Jacobi-előkondicionált CG, automatikus választás |
-| Eredmény | reakció, alakváltozás, feszültség, főfeszültség, von Mises |
-| Megjelenítés | háló, peremek, támaszok, mezők, főirányok, ritka mátrix |
-| Export/import | legacy VTK, PROTUS és Myfem/FEMaster kompatibilitás |
-| Verifikáció | patch-próba, karcsú konzol, Cook-membrán mindhárom elemre |
+| Physical model | 2D linear isotropic elasticity |
+| Assumptions | plane stress, plane strain |
+| Elements | Triangle3 (CST), Triangle6 (T6), Quad4 |
+| Integration | T3 centroid, T6 7-point Dunavant, Q4 2×2 Gauss |
+| Meshes | structured T3/T6/Q4, modern Gmsh T3/T6/Q4 |
+| Geometry | rectangles, polygons, circles, arcs, holes, local refinement |
+| Constraints | fixed or prescribed `ux`/`uy`, complete named boundaries |
+| Loads | nodal force, traction, normal pressure, body acceleration |
+| Solvers | sparse direct, Jacobi-preconditioned CG, automatic selection |
+| Results | reaction, strain, stress, principal stress, von Mises stress |
+| Visualization | mesh, boundaries, supports, fields, principal directions, sparse matrices |
+| Import/export | legacy VTK, PROTUS and Myfem/FEMaster compatibility |
+| Verification | patch test, slender cantilever, Cook's membrane for every element type |
 
-## Telepítés
+## Installation
 
-Python 3.10 vagy újabb szükséges.
+FEMPy requires Python 3.10 or newer.
 
-Telepítés közvetlenül a GitHub-projektből Gmsh támogatással:
+Install directly from GitHub with optional Gmsh support:
 
 ```powershell
 python -m pip install "fempy-edu[gmsh] @ git+https://github.com/primuszp/FEMPy.git"
 ```
 
-Fejlesztői telepítés:
+For development:
 
 ```powershell
 git clone https://github.com/primuszp/FEMPy.git
@@ -75,21 +83,22 @@ cd FEMPy
 python -m pip install -e ".[dev,gmsh]"
 ```
 
-A Gmsh opcionális. Strukturált háló, megoldás, plot és VTK-export nélküle is
-használható:
+Gmsh is optional. Structured meshing, solving, plotting, and VTK export work
+without it:
 
 ```powershell
 python -m pip install -e .
 ```
 
-## Gyors kezdés: Quad4 konzol
+## Quick start: a Quad4 cantilever
 
-Egy elemzés öt lépése: háló, anyag, modell, peremfeltételek, megoldás.
+A complete analysis has five clear stages: mesh, material, model, boundary
+conditions, and solution.
 
 ```python
 from fempy import LinearElasticMaterial, Model, PlotStyle, rectangular_quad_mesh
 
-# 1. Geometria és strukturált háló [mm]
+# 1. Geometry and structured mesh [mm]
 mesh = rectangular_quad_mesh(
     nx=20,
     ny=5,
@@ -97,48 +106,49 @@ mesh = rectangular_quad_mesh(
     height=50.0,
 )
 
-# 2. Anyag [N, mm, MPa]
+# 2. Material [N, mm, MPa]
 steel = LinearElasticMaterial(
     young_modulus=210_000.0,
     poisson_ratio=0.3,
-    name="acél",
+    name="steel",
 )
 
-# 3. Öt milliméter vastag síkfeszültségi modell
-model = Model(mesh, steel, thickness=5.0, name="Quad4 konzol")
+# 3. Plane-stress model with a thickness of 5 mm
+model = Model(mesh, steel, thickness=5.0, name="Quad4 cantilever")
 
-# 4. Bal oldali befogás és összesen 1000 N függőleges csúcsterhelés
+# 4. Clamp the left edge and apply a total vertical tip load of 1000 N
 model.fix_nodes(mesh.nodes_where(x=0.0))
 right_nodes = mesh.nodes_where(x=200.0)
 model.add_nodal_loads(right_nodes, fy=-1_000.0 / len(right_nodes))
 
-# 5. Ritka megoldás és kiértékelés
+# 5. Sparse solution and post-processing
 result = model.solve()
 print(result.summary())
 
-style = PlotStyle(language="hu", length_unit="mm", stress_unit="MPa")
+style = PlotStyle(language="en", length_unit="mm", stress_unit="MPa")
 result.plot(
     field="nodal_von_mises",
     scale=result.suggested_deformation_scale(),
     style=style,
 )
-result.write_vtk("quad4_konzol.vtk")
+result.write_vtk("quad4_cantilever.vtk")
 ```
 
-A teljes futtatható változat: [`examples/cantilever_quad.py`](examples/cantilever_quad.py).
+See [`examples/cantilever_quad.py`](examples/cantilever_quad.py) for the
+complete runnable version.
 
-## T6 hálózás Gmsh segítségével
+## T6 meshing with Gmsh
 
-A FEMPy közvetlenül a Gmsh Python API-ját használja; nem készít köztes `.geo`
-vagy `.inp` fájlt. A geometriai peremnevek a hálózás után is megmaradnak, ezért
-a modell nem függ csomópontszámoktól.
+FEMPy calls the Gmsh Python API directly; no intermediate `.geo` or `.inp`
+file is required. Geometric boundary names survive meshing, so the model does
+not depend on node numbering.
 
 ```python
 from fempy import Geometry2D, GmshMesher, LinearElasticMaterial, Model, PlotStyle
 
-# Téglalap kör alakú furattal és helyi hálófinomítással
+# A rectangular plate with a circular hole and local mesh refinement
 geometry = (
-    Geometry2D("furatos lemez")
+    Geometry2D("plate with hole")
     .add_rectangle(width=100.0, height=50.0)
     .add_circle(
         center=(50.0, 25.0),
@@ -148,7 +158,7 @@ geometry = (
     )
 )
 
-# order=2: hatcsomópontos, görbült oldalú Triangle6 háló
+# order=2 creates six-node Triangle6 elements with curved edges
 mesh = GmshMesher(
     element_size=6.0,
     element_shape="triangle",
@@ -159,13 +169,13 @@ model = Model(
     mesh,
     LinearElasticMaterial(210_000.0, 0.3),
     thickness=5.0,
-    name="nyomás alatt álló furatos lemez",
+    name="pressurized plate with hole",
 )
 model.fix_boundary("left")
 model.add_boundary_pressure("hole", pressure=10.0)
 
 result = model.solve()
-style = PlotStyle(language="hu", length_unit="mm", stress_unit="MPa")
+style = PlotStyle(language="en", length_unit="mm", stress_unit="MPa")
 
 mesh.plot(style=style)
 model.plot_boundary_conditions(style=style)
@@ -176,13 +186,13 @@ result.plot(
 )
 ```
 
-A T6 csomópontsorrendje `(1, 2, 3, 12, 23, 31)`. A görbült T6 peremek
-traction- és nyomásterhelése hárompontos vonalmenti Gauss-integrálással készül.
+T6 uses the node order `(1, 2, 3, 12, 23, 31)`. Traction and pressure on
+curved T6 boundaries are integrated using three-point line Gauss quadrature.
 
-A teljes kétnyelvű példa:
+The full bilingual example is
 [`examples/t6_localized_plots.py`](examples/t6_localized_plots.py).
 
-### Strukturált T6 háló Gmsh nélkül
+### Structured T6 mesh without Gmsh
 
 ```python
 from fempy import rectangular_t6_mesh
@@ -190,7 +200,7 @@ from fempy import rectangular_t6_mesh
 mesh = rectangular_t6_mesh(nx=10, ny=4, width=100.0, height=40.0)
 ```
 
-Meglévő, kizárólag Triangle3 elemekből álló háló másodrendűvé emelhető:
+An existing all-Triangle3 mesh can also be upgraded to second order:
 
 ```python
 from fempy import to_quadratic_tri_mesh
@@ -198,33 +208,33 @@ from fempy import to_quadratic_tri_mesh
 t6_mesh = to_quadratic_tri_mesh(triangle3_mesh)
 ```
 
-## Peremfeltételek és terhek
+## Boundary conditions and loads
 
-Névvel ellátott Gmsh-peremeken a hálófinomítás nem változtatja meg a modell
-definícióját.
+Named Gmsh boundaries keep model definitions independent of mesh refinement.
 
 ```python
-# Egy csomópont vagy csomópontlista
+# One node or a list of nodes
 model.fix_node(0)                              # ux = uy = 0
-model.fix_node(1, x=True, y=False)            # csak ux = 0
-model.prescribe(2, ux=0.05)                   # vezérelt elmozdulás
+model.fix_node(1, x=True, y=False)            # ux = 0 only
+model.prescribe(2, ux=0.05)                   # prescribed displacement
 
-# Teljes elnevezett perem
+# Complete named boundaries
 model.fix_boundary("left")
 model.fix_boundary("bottom", x=False, y=True)
 model.prescribe_boundary("right", ux=0.05)
 
-# Erők és gyorsulás
+# Forces and acceleration
 model.add_nodal_load(node=10, fx=100.0, fy=-50.0)
 model.add_boundary_traction("right", tx=2.0, ty=-1.0)
-model.add_boundary_pressure("hole", pressure=10.0)  # pozitív: a testbe mutat
+model.add_boundary_pressure("hole", pressure=10.0)  # positive points inward
 model.set_body_acceleration(ay=-9.81)
 ```
 
-A traction és a nyomás erő/felület dimenziójú; a modell vastagsága az
-integrálás része. Testgyorsuláshoz az anyag `density` értékét is meg kell adni.
+Traction and pressure have the dimensions of force per area; model thickness
+is included during integration. Body acceleration also requires `density` in
+the material definition.
 
-Peremek és peremfeltételek ellenőrzése:
+Inspect named boundaries and constraints before solving:
 
 ```python
 print(mesh.boundary_names)
@@ -235,10 +245,10 @@ mesh.plot_boundaries(names=["left", "hole"], style=style)
 model.plot_boundary_conditions(style=style)
 ```
 
-## Tudományos és lokalizált plotok
+## Scientific and localized plots
 
-A `PlotStyle` minden FEMPy-ábrán ugyanazt a nyelvet, mértékegységet és
-számformázást alkalmazza.
+`PlotStyle` applies one language, unit system, and number format consistently
+to every FEMPy figure.
 
 ```python
 from fempy import PlotStyle
@@ -252,41 +262,41 @@ result.plot(field="nodal_von_mises", style=en)
 result.plot_principal_directions(stride=2, style=hu)
 ```
 
-- magyar módban `12,5`, angol módban `12.5` jelenik meg;
-- a feszültségmezők szabványos `σₓ`, `σᵧ`, `τₓᵧ`, `σ₁`, `σ₂`, `σᵥM`
-  jelölést kapnak;
-- nagy és kis értékeknél közös `10^(3n)` mérnöki kitevő jelenik meg;
-- előjeles mezők nullaközepű divergens, von Mises-értékek szekvenciális
-  színskálát használnak;
-- a színskála magassága a diagram rajztéglalapjához igazodik.
+- Hungarian mode displays `12,5`; English mode displays `12.5`.
+- Stress fields use the conventional `σₓ`, `σᵧ`, `τₓᵧ`, `σ₁`, `σ₂`, and
+  `σᵥM` symbols.
+- Very large and small values share a `10^(3n)` engineering exponent.
+- Signed fields use zero-centered diverging color maps; von Mises fields use
+  sequential color maps.
+- The color bar height is constrained to the chart's drawing rectangle.
 
-Elérhető mezőnevek:
+Available result field names:
 
-| Mező | Jelentés |
+| Field | Meaning |
 |---|---|
-| `displacement_magnitude` | elmozdulásvektor nagysága |
-| `displacement_x`, `displacement_y` | elmozduláskomponensek |
-| `stress_x`, `stress_y`, `stress_xy` | elemközépi feszültségkomponensek |
-| `von_mises` | elemközépi von Mises-feszültség |
-| `nodal_stress_x`, `nodal_stress_y`, `nodal_stress_xy` | simított csomóponti feszültségek |
-| `nodal_von_mises` | csomóponti von Mises-feszültség |
-| `principal_stress_1`, `principal_stress_2` | csomóponti főfeszültségek |
+| `displacement_magnitude` | displacement vector magnitude |
+| `displacement_x`, `displacement_y` | displacement components |
+| `stress_x`, `stress_y`, `stress_xy` | element-center stress components |
+| `von_mises` | element-center von Mises stress |
+| `nodal_stress_x`, `nodal_stress_y`, `nodal_stress_xy` | recovered nodal stresses |
+| `nodal_von_mises` | nodal von Mises stress |
+| `principal_stress_1`, `principal_stress_2` | nodal principal stresses |
 
-## Ritka solver és mátrixdiagnosztika
+## Sparse solvers and matrix diagnostics
 
-A `solve()` alapértelmezett `auto` módja kisebb rendszernél ritka direkt,
-nagyobb rendszernél Jacobi-előkondicionált CG-megoldót választ.
+The default `auto` mode uses a sparse direct solver for smaller systems and a
+Jacobi-preconditioned conjugate-gradient solver for larger systems.
 
 ```python
 from fempy import SolverOptions
 
-# Automatikus solver
+# Automatic solver selection
 result = model.solve()
 
-# Explicit ritka direkt megoldás
+# Explicit sparse direct solution
 result = model.solve("direct")
 
-# Memóriatakarékos iteratív megoldás
+# Memory-efficient iterative solution
 result = model.solve(
     SolverOptions(
         method="cg",
@@ -302,21 +312,21 @@ print(result.solver_info.relative_residual)
 print(result.solver_info.matrix_memory_megabytes)
 ```
 
-A merevségi mátrix sűrűvé alakítás nélkül vizsgálható:
+Inspect the stiffness matrix without converting it to a dense array:
 
 ```python
 K = model.stiffness_matrix()
 Kff = model.stiffness_matrix(reduced=True)
 
-model.plot_stiffness_matrix(kind="sparsity", style=hu)
-model.plot_stiffness_matrix(kind="magnitude", reduced=True, style=hu)
+model.plot_stiffness_matrix(kind="sparsity", style=en)
+model.plot_stiffness_matrix(kind="magnitude", reduced=True, style=en)
 ```
 
-Nagy mátrixnál az ábrázoló determinisztikus mintavételezéssel korlátozza a
-kirajzolt nemnulla bejegyzések számát. Részletes példa:
+For large matrices, deterministic sampling limits the number of nonzero
+entries drawn. See
 [`examples/sparse_matrix_visualization.py`](examples/sparse_matrix_visualization.py).
 
-## Eredmények és VTK-export
+## Results and VTK export
 
 ```python
 result.displacement                 # (node_count, 2): ux, uy
@@ -328,29 +338,29 @@ result.stress                       # (element_count, 3): sx, sy, tau_xy
 result.von_mises                    # (element_count,)
 result.principal_stress             # (element_count, 2)
 
-result.integration_point_strain     # elemenként minden Gauss-pont
+result.integration_point_strain     # every Gauss point of each element
 result.integration_point_stress
 result.integration_point_von_mises
 
-result.nodal_strain                 # extrapolált és elemközileg átlagolt
+result.nodal_strain                 # extrapolated and averaged over elements
 result.nodal_stress
 result.nodal_von_mises
 result.nodal_principal_stress
 result.nodal_principal_angle
 ```
 
-ParaView-kompatibilis legacy VTK-fájl:
+Write a ParaView-compatible legacy VTK file:
 
 ```python
-path = result.write_vtk("eredmeny.vtk")
+path = result.write_vtk("result.vtk")
 print(path)
 ```
 
-Az export tartalmazza a háló eredeti T3/T6/Q4 cellatípusát, az elmozdulást,
-reakciót, csomóponti és elemmezőket, főfeszültségi vektorokat és a külön
-integrációsponti eredményeket.
+The export preserves the original T3/T6/Q4 cell type and includes
+displacements, reactions, nodal and element fields, principal-stress vectors,
+and separate integration-point results.
 
-## Klasszikus verifikáció
+## Classical verification
 
 ```python
 from fempy import run_classic_validations
@@ -363,25 +373,25 @@ report.plot()
 assert report.passed
 ```
 
-A kilenc beépített eset három feladatot vizsgál Triangle3, Triangle6 és Quad4
-elemmel:
+The nine built-in cases evaluate three problems with Triangle3, Triangle6,
+and Quad4 elements:
 
-1. egytengelyű patch-próba egzakt homogén mezővel;
-2. karcsú konzol Timoshenko-referenciával;
-3. torzításérzékeny Cook-membrán konvergenciasorral.
+1. a uniaxial patch test with an exact homogeneous field;
+2. a slender cantilever with a Timoshenko reference solution;
+3. a distortion-sensitive Cook's membrane convergence series.
 
-Az aktuális T6 eredmények:
+Current T6 results:
 
-| Feladat | Relatív hiba |
+| Problem | Relative error |
 |---|---:|
-| patch-próba | `7,143e-13` |
-| karcsú konzol | `0,2232%` |
-| Cook-membrán | `0,03256%` |
+| patch test | `7.143e-13` |
+| slender cantilever | `0.2232%` |
+| Cook's membrane | `0.03256%` |
 
-- Módszertan: [`docs/VALIDACIO.md`](docs/VALIDACIO.md)
-- Generált eredmények: [`examples/classic_validation_results.md`](examples/classic_validation_results.md)
+- Methodology: [`docs/VALIDACIO.md`](docs/VALIDACIO.md)
+- Generated results: [`examples/classic_validation_results.md`](examples/classic_validation_results.md)
 
-## Kompatibilitási import
+## Compatibility import
 
 ```python
 from fempy import load_myfem, load_protus
@@ -393,40 +403,41 @@ protus_model = load_protus("INPUT_FEA_PROTUS.txt")
 protus_result = protus_model.solve()
 ```
 
-Az importerek az egytől induló régi számozást automatikusan a FEMPy nullától
-induló indexeire alakítják. Az új számítás már a ritka megoldót használja.
+Importers automatically convert legacy one-based numbering to FEMPy's
+zero-based indices. The imported analysis then uses the sparse solver.
 
-## Futtatható példák
+## Runnable examples
 
-| Példa | Bemutatott funkció | Gmsh |
+| Example | Demonstrated feature | Gmsh |
 |---|---|---:|
-| [`cantilever_quad.py`](examples/cantilever_quad.py) | minimális Quad4 elemzés és VTK | nem |
-| [`gmsh_plate_with_hole.py`](examples/gmsh_plate_with_hole.py) | furatos Triangle3 háló | igen |
-| [`gmsh_quad_mesh.py`](examples/gmsh_quad_mesh.py) | rekombinált Quad4 háló és peremek | igen |
-| [`t6_localized_plots.py`](examples/t6_localized_plots.py) | T6, nyomás, magyar/angol plot | igen |
-| [`boundary_conditions.py`](examples/boundary_conditions.py) | irányonkénti megtámasztások | igen |
-| [`pressurized_hole.py`](examples/pressurized_hole.py) | normális furatnyomás | igen |
-| [`colored_cantilever.py`](examples/colored_cantilever.py) | teljes eredménygaléria | nem |
-| [`sparse_matrix_visualization.py`](examples/sparse_matrix_visualization.py) | CSR-memória és solverdiagnosztika | nem |
-| [`validate_classic_fem.py`](examples/validate_classic_fem.py) | kilenc benchmark futtatása | nem |
-| [`protus_compat.py`](examples/protus_compat.py) | PROTUS-import | nem |
-| [`triangle_from_myfem.py`](examples/triangle_from_myfem.py) | Myfem/FEMaster-import | nem |
+| [`cantilever_quad.py`](examples/cantilever_quad.py) | minimal Quad4 analysis and VTK | no |
+| [`gmsh_plate_with_hole.py`](examples/gmsh_plate_with_hole.py) | Triangle3 plate-with-hole mesh | yes |
+| [`gmsh_quad_mesh.py`](examples/gmsh_quad_mesh.py) | recombined Quad4 mesh and boundaries | yes |
+| [`t6_localized_plots.py`](examples/t6_localized_plots.py) | T6, pressure, English/Hungarian plots | yes |
+| [`boundary_conditions.py`](examples/boundary_conditions.py) | directional supports | yes |
+| [`pressurized_hole.py`](examples/pressurized_hole.py) | normal pressure on a hole | yes |
+| [`colored_cantilever.py`](examples/colored_cantilever.py) | complete result gallery | no |
+| [`sparse_matrix_visualization.py`](examples/sparse_matrix_visualization.py) | CSR memory and solver diagnostics | no |
+| [`validate_classic_fem.py`](examples/validate_classic_fem.py) | nine benchmark cases | no |
+| [`protus_compat.py`](examples/protus_compat.py) | PROTUS import | no |
+| [`triangle_from_myfem.py`](examples/triangle_from_myfem.py) | Myfem/FEMaster import | no |
 
-Az összes példa leírása: [`examples/README.md`](examples/README.md).
+See [`examples/README.md`](examples/README.md) for a description of every
+example.
 
-## Dokumentáció és projektstruktúra
+## Documentation and project structure
 
-- [`docs/API.md`](docs/API.md): tömör publikus API-referencia;
-- [`docs/KODMAGYARAZAT.md`](docs/KODMAGYARAZAT.md): numerikus és szerkezeti
-  kódmagyarázat;
-- [`docs/VALIDACIO.md`](docs/VALIDACIO.md): benchmarkok, referenciák és
-  elfogadási feltételek;
-- `fempy/elements.py`: alakfüggvények, `B` mátrix, merevség és tömeg;
-- `fempy/model.py`: ritka összeállítás, peremfeltételek és megoldás;
-- `fempy/plotting.py`: lokalizált tudományos vizualizáció;
-- `tests/test_fempy.py`: numerikus, API-, Gmsh- és regressziós tesztek.
+- [`docs/API.md`](docs/API.md): concise public API reference;
+- [`docs/KODMAGYARAZAT.md`](docs/KODMAGYARAZAT.md): numerical and structural
+  implementation guide;
+- [`docs/VALIDACIO.md`](docs/VALIDACIO.md): benchmarks, references, and
+  acceptance criteria;
+- `fempy/elements.py`: shape functions, `B` matrices, stiffness, and mass;
+- `fempy/model.py`: sparse assembly, boundary conditions, and solution;
+- `fempy/plotting.py`: localized scientific visualization;
+- `tests/test_fempy.py`: numerical, API, Gmsh, and regression tests.
 
-## Fejlesztés és ellenőrzés
+## Development and quality checks
 
 ```powershell
 python -m pip install -e ".[dev,gmsh]"
@@ -436,31 +447,31 @@ python -m pytest
 python -m build
 ```
 
-A GitHub Actions ugyanezt Python 3.10, 3.11 és 3.12 alatt hajtja végre.
-Közreműködés előtt lásd a [`CONTRIBUTING.md`](CONTRIBUTING.md) fájlt.
+GitHub Actions performs the same checks on Python 3.10, 3.11, and 3.12. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md) before contributing.
 
-## Mértékegységek
+## Units
 
-A FEMPy nem kényszerít mértékegységrendszert. Minden bemenetet egyetlen
-konzisztens rendszerben kell megadni. Például N–mm rendszerben:
+FEMPy does not impose a unit system. All inputs must use one consistent
+system. For example, in an N–mm system:
 
-- geometria és elmozdulás: `mm`;
-- erő: `N`;
-- Young-modulus és feszültség: `N/mm² = MPa`;
-- síkbeli traction és nyomás: `N/mm²`;
-- vastagság: `mm`.
+- geometry and displacement: `mm`;
+- force: `N`;
+- Young's modulus and stress: `N/mm² = MPa`;
+- in-plane traction and pressure: `N/mm²`;
+- thickness: `mm`.
 
-A `PlotStyle` csak megjeleníti a megadott egységnevet; nem végez
-mértékegység-konverziót.
+`PlotStyle` displays the supplied unit label; it does not convert units.
 
-## Jelenlegi korlátok
+## Current limitations
 
-A FEMPy szándékosan átlátható lineáris statikai könyvtár. Jelenleg modellenként
-egy izotróp anyagot és egy vastagságot kezel. Nincs kontakt, képlékenység,
-geometriai nemlinearitás, törés, dinamikai időintegrálás vagy ipari
-minőségbiztosítás. Biztonságkritikus mérnöki döntés előtt független
-ellenőrzés és megfelelő szabvány szerinti validáció szükséges.
+FEMPy is intentionally a transparent linear-static library. A model currently
+uses one isotropic material and one thickness. Contact, plasticity, geometric
+nonlinearity, fracture, dynamic time integration, and industrial quality
+assurance are outside the present scope. Safety-critical engineering decisions
+require independent verification and validation against the applicable
+standards.
 
-## Licenc
+## License
 
-[MIT](LICENSE) © Primusz Péter
+[MIT](LICENSE) © Péter Primusz
