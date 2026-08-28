@@ -8,29 +8,133 @@ rajztéglalap magasságát követi.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from typing import Literal
+
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.collections import LineCollection, PolyCollection
+from matplotlib.colors import Normalize, TwoSlopeNorm
+from matplotlib.ticker import FuncFormatter
 from matplotlib.tri import Triangulation
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from scipy.sparse import issparse
 
+from .elements import Triangle6
 
-def plot_mesh(mesh, *, ax=None, show_node_ids: bool = False):
+
+@dataclass(frozen=True, slots=True)
+class PlotStyle:
+    """Egységes nyelvi és mérnöki megjelenítési beállítás.
+
+    Args:
+        language: ``"hu"`` esetén magyar felirat és tizedesvessző,
+            ``"en"`` esetén angol felirat és tizedespont.
+        length_unit: A koordináták mértékegysége, például ``"mm"``.
+        displacement_unit: Az elmozdulás mértékegysége; alapértelmezetten a
+            ``length_unit`` értékét örökli.
+        stress_unit: A feszültség mértékegysége, például ``"MPa"``.
+        precision: Jelentős számjegyek száma a tengelyeken és színskálákon.
+        engineering_scaling: Nagy vagy kis mezőértékek közös ``10^(3n)``
+            mérnöki kitevővel jelenjenek meg.
+    """
+
+    language: Literal["hu", "en"] = "hu"
+    length_unit: str | None = None
+    displacement_unit: str | None = None
+    stress_unit: str | None = None
+    precision: int = 4
+    engineering_scaling: bool = True
+
+    def __post_init__(self) -> None:
+        if self.language not in ("hu", "en"):
+            raise ValueError("plot language must be 'hu' or 'en'")
+        if not 2 <= self.precision <= 10:
+            raise ValueError("plot precision must be between 2 and 10")
+
+    @property
+    def effective_displacement_unit(self) -> str | None:
+        return self.displacement_unit or self.length_unit
+
+    def text(self, hungarian: str, english: str) -> str:
+        """A beállított nyelvnek megfelelő szöveget választja ki."""
+
+        return hungarian if self.language == "hu" else english
+
+    def number(self, value: float) -> str:
+        """Lebegőpontos számot lokalizált, szükség esetén tudományos alakban ír."""
+
+        if np.isclose(value, 0.0, atol=10.0 ** (-self.precision - 2)):
+            value = 0.0
+        text = f"{value:.{self.precision}g}"
+        if "e" in text:
+            mantissa, exponent = text.split("e")
+            mantissa = mantissa.replace(".", "{,}") if self.language == "hu" else mantissa
+            return rf"${mantissa}\times10^{{{int(exponent)}}}$"
+        return text.replace(".", ",") if self.language == "hu" else text
+
+    def integer(self, value: int) -> str:
+        """Egész számot nyelvhelyes ezres tagolással formáz."""
+
+        separator = " " if self.language == "hu" else ","
+        return f"{value:,}".replace(",", separator)
+
+
+DEFAULT_PLOT_STYLE = PlotStyle()
+
+
+def _style(style: PlotStyle | None) -> PlotStyle:
+    return DEFAULT_PLOT_STYLE if style is None else style
+
+
+def _format_axes(ax, style: PlotStyle, *, equal: bool = True) -> None:
+    """Egységes tipográfiát, rácsot és lokalizált tengelyszámokat alkalmaz."""
+
+    formatter = FuncFormatter(lambda value, _position: style.number(value))
+    ax.xaxis.set_major_formatter(formatter)
+    ax.yaxis.set_major_formatter(formatter)
+    ax.set_facecolor("#fbfcfe")
+    ax.grid(True, color="#d9e0e7", linewidth=0.55, alpha=0.55, zorder=0)
+    for spine in ax.spines.values():
+        spine.set_color("#5d6d7e")
+        spine.set_linewidth(0.8)
+    if equal:
+        ax.set_aspect("equal")
+    coordinate_unit = f" [{style.length_unit}]" if style.length_unit else ""
+    ax.set_xlabel(f"x{coordinate_unit}")
+    ax.set_ylabel(f"y{coordinate_unit}")
+
+
+def _outline_node_ids(element) -> tuple[int, ...]:
+    """Rajzolási körüljárást ad; a T6 tárolási sorrendje önmagában nem poligon."""
+
+    ids = element.node_ids
+    if isinstance(element, Triangle6):
+        return (ids[0], ids[3], ids[1], ids[4], ids[2], ids[5])
+    return ids
+
+
+def _polygons(mesh, nodes=None):
+    coordinates = mesh.nodes if nodes is None else nodes
+    return [coordinates[list(_outline_node_ids(element))] for element in mesh.elements]
+
+
+def plot_mesh(mesh, *, ax=None, show_node_ids: bool = False, style: PlotStyle | None = None):
     """Deformálatlan hálót rajzol, opcionális csomópontszámokkal."""
 
     if ax is None:
         _, ax = plt.subplots()
-    polygons = [mesh.nodes[list(element.node_ids)] for element in mesh.elements]
+    style = _style(style)
+    polygons = _polygons(mesh)
     collection = PolyCollection(polygons, facecolors="none", edgecolors="#34495e", linewidths=0.8)
     ax.add_collection(collection)
     if show_node_ids:
         for index, (x, y) in enumerate(mesh.nodes):
             ax.text(x, y, str(index), fontsize=8, color="#c0392b")
     ax.autoscale()
-    ax.set_aspect("equal")
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
+    ax.margins(0.05)
+    _format_axes(ax, style)
+    ax.set_title(style.text("Végeselemes háló", "Finite element mesh"), fontweight="semibold")
     return ax
 
 
@@ -43,6 +147,7 @@ def plot_boundaries(
     show_labels: bool = True,
     linewidth: float = 3.0,
     cmap: str = "tab10",
+    style: PlotStyle | None = None,
 ):
     """Színesen kirajzolja a háló névvel ellátott peremcsoportjait.
 
@@ -61,6 +166,7 @@ def plot_boundaries(
 
     if ax is None:
         _, ax = plt.subplots()
+    style = _style(style)
     selected = list(mesh.boundary_names if names is None else names)
     if not selected:
         raise ValueError("the mesh has no named boundaries to plot")
@@ -68,7 +174,7 @@ def plot_boundaries(
     if unknown:
         raise KeyError(f"unknown boundaries {unknown}; available: {', '.join(mesh.boundary_names)}")
     if show_mesh:
-        polygons = [mesh.nodes[list(element.node_ids)] for element in mesh.elements]
+        polygons = _polygons(mesh)
         ax.add_collection(
             PolyCollection(
                 polygons,
@@ -113,10 +219,14 @@ def plot_boundaries(
             )
     ax.autoscale()
     ax.margins(0.05)
-    ax.set_aspect("equal")
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-    ax.legend(title="Peremek", loc="upper left", bbox_to_anchor=(1.01, 1.0))
+    _format_axes(ax, style)
+    ax.set_title(style.text("Elnevezett peremek", "Named boundaries"), fontweight="semibold")
+    ax.legend(
+        title=style.text("Peremek", "Boundaries"),
+        loc="upper left",
+        bbox_to_anchor=(1.01, 1.0),
+        frameon=True,
+    )
     return ax
 
 
@@ -126,6 +236,7 @@ def plot_boundary_conditions(
     ax=None,
     show_mesh: bool = True,
     show_loads: bool = True,
+    style: PlotStyle | None = None,
 ):
     """A modell kinematikai peremfeltételeit könnyen olvashatóan ábrázolja.
 
@@ -137,8 +248,9 @@ def plot_boundary_conditions(
 
     if ax is None:
         _, ax = plt.subplots()
+    style = _style(style)
     if show_mesh:
-        polygons = [model.mesh.nodes[list(element.node_ids)] for element in model.mesh.elements]
+        polygons = _polygons(model.mesh)
         ax.add_collection(
             PolyCollection(
                 polygons,
@@ -155,10 +267,20 @@ def plot_boundary_conditions(
         np.isfinite(prescribed) & ~np.isclose(prescribed, 0.0, equal_nan=False), axis=1
     )
     categories = (
-        (fixed_x & ~fixed_y & ~nonzero, ">", "#e67e22", "x irányban fix"),
-        (fixed_y & ~fixed_x & ~nonzero, "^", "#2471a3", "y irányban fix"),
-        (fixed_x & fixed_y & ~nonzero, "s", "#c0392b", "x és y irányban fix"),
-        (nonzero, "D", "#7d3c98", "előírt nem nulla elmozdulás"),
+        (fixed_x & ~fixed_y & ~nonzero, ">", "#e67e22", style.text("x irányban fix", "fixed in x")),
+        (fixed_y & ~fixed_x & ~nonzero, "^", "#2471a3", style.text("y irányban fix", "fixed in y")),
+        (
+            fixed_x & fixed_y & ~nonzero,
+            "s",
+            "#c0392b",
+            style.text("x és y irányban fix", "fixed in x and y"),
+        ),
+        (
+            nonzero,
+            "D",
+            "#7d3c98",
+            style.text("előírt nem nulla elmozdulás", "prescribed nonzero displacement"),
+        ),
     )
     for mask, marker, colour, label in categories:
         if np.any(mask):
@@ -194,15 +316,17 @@ def plot_boundary_conditions(
                 scale=1.0,
                 color="#17202a",
                 width=0.0035,
-                label="csomóponti terhelés",
+                label=style.text("csomóponti terhelés", "nodal load"),
                 zorder=5,
             )
 
     ax.autoscale()
     ax.margins(0.08)
-    ax.set_aspect("equal")
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
+    _format_axes(ax, style)
+    ax.set_title(
+        style.text("Peremfeltételek és terhelések", "Boundary conditions and loads"),
+        fontweight="semibold",
+    )
     handles, _ = ax.get_legend_handles_labels()
     if handles:
         ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0))
@@ -216,16 +340,27 @@ def _triangles(mesh):
         ids = element.node_ids
         if len(ids) == 3:
             triangles.append(ids)
+        elif isinstance(element, Triangle6):
+            # Négy lineáris megjelenítési háromszög használja mind a hat T6
+            # csomópontot; így a kvadratikus mező középcsomópontjai sem vesznek el.
+            triangles.extend(
+                (
+                    (ids[0], ids[3], ids[5]),
+                    (ids[3], ids[1], ids[4]),
+                    (ids[5], ids[4], ids[2]),
+                    (ids[3], ids[4], ids[5]),
+                )
+            )
         elif len(ids) == 4:
             triangles.extend(((ids[0], ids[1], ids[2]), (ids[0], ids[2], ids[3])))
         else:
-            raise ValueError("only Triangle3 and Quad4 elements can be plotted")
+            raise ValueError("only Triangle3, Triangle6 and Quad4 elements can be plotted")
     return np.asarray(triangles, dtype=int)
 
 
 def _draw_undeformed(mesh, ax):
     """Halvány, szaggatott eredeti hálót rajzol referencia-geometriaként."""
-    polygons = [mesh.nodes[list(element.node_ids)] for element in mesh.elements]
+    polygons = _polygons(mesh)
     ax.add_collection(
         PolyCollection(
             polygons,
@@ -237,7 +372,7 @@ def _draw_undeformed(mesh, ax):
     )
 
 
-def _add_colour_bar(ax, artist, label: str):
+def _add_colour_bar(ax, artist, label: str, style: PlotStyle):
     """A rajztéglalappal pontosan azonos magasságú színskálát készít.
 
     Az ``axes_grid1`` külön tengelyt fűz a diagram jobb oldalához. Emiatt a
@@ -247,7 +382,12 @@ def _add_colour_bar(ax, artist, label: str):
 
     divider = make_axes_locatable(ax)
     colour_axis = divider.append_axes("right", size="3.5%", pad=0.08)
-    return ax.figure.colorbar(artist, cax=colour_axis, label=label)
+    colour_bar = ax.figure.colorbar(artist, cax=colour_axis)
+    colour_bar.set_label(label, fontweight="semibold")
+    colour_bar.ax.yaxis.set_major_formatter(
+        FuncFormatter(lambda value, _position: style.number(value))
+    )
+    return colour_bar
 
 
 def plot_sparse_matrix(
@@ -257,6 +397,7 @@ def plot_sparse_matrix(
     max_points: int = 250_000,
     title: str = "sparse matrix",
     ax=None,
+    style: PlotStyle | None = None,
 ):
     """Ritka mátrixot jelenít meg sűrűvé alakítás nélkül.
 
@@ -280,6 +421,7 @@ def plot_sparse_matrix(
         raise ValueError("max_points must be positive")
     if ax is None:
         _, ax = plt.subplots()
+    style = _style(style)
     # A COO sor/oszlop tömbjei közvetlenül használhatók szórásdiagramként;
     # nincs N×N képtömb és nincs toarray() hívás.
     coordinate = matrix.tocoo(copy=False)
@@ -307,21 +449,112 @@ def plot_sparse_matrix(
             marker="s",
             linewidths=0,
         )
-        _add_colour_bar(ax, artist, "log10 |Kij|")
+        _add_colour_bar(ax, artist, r"$\log_{10}|K_{ij}|$", style)
     row_count, column_count = matrix.shape
     ax.set_xlim(-0.5, column_count - 0.5)
     ax.set_ylim(row_count - 0.5, -0.5)
     ax.set_aspect("equal")
     density = matrix.nnz / max(row_count * column_count, 1)
-    sampling = f", showing {len(data):,}" if len(data) < original_count else ""
-    ax.set_title(
-        f"{title}\n{row_count:,} × {column_count:,}, "
-        f"nnz={matrix.nnz:,}{sampling}, density={density:.3%}",
-        fontsize=10,
+    sampling = (
+        style.text(
+            f", megjelenítve: {style.integer(len(data))}",
+            f", showing {style.integer(len(data))}",
+        )
+        if len(data) < original_count
+        else ""
     )
-    ax.set_xlabel("column degree of freedom")
-    ax.set_ylabel("row degree of freedom")
+    density_text = style.number(100.0 * density)
+    ax.set_title(
+        f"{title}\n{style.integer(row_count)} × {style.integer(column_count)}, "
+        f"nnz={style.integer(matrix.nnz)}{sampling}, "
+        f"{style.text('kitöltöttség', 'density')}={density_text}%",
+        fontsize=10,
+        fontweight="semibold",
+    )
+    _format_axes(ax, style, equal=True)
+    ax.set_xlabel(style.text("oszlop szabadságfok", "column degree of freedom"))
+    ax.set_ylabel(style.text("sor szabadságfok", "row degree of freedom"))
     return ax
+
+
+_FIELD_INFO = {
+    "von_mises": (
+        "von Mises-egyenértékfeszültség",
+        "von Mises equivalent stress",
+        r"$\sigma_\mathrm{vM}$",
+        "stress",
+        False,
+    ),
+    "stress_x": ("x irányú normálfeszültség", "x normal stress", r"$\sigma_x$", "stress", True),
+    "stress_y": ("y irányú normálfeszültség", "y normal stress", r"$\sigma_y$", "stress", True),
+    "stress_xy": (
+        "síkbeli nyírófeszültség",
+        "in-plane shear stress",
+        r"$\tau_{xy}$",
+        "stress",
+        True,
+    ),
+    "principal_stress_1": (
+        "első főfeszültség",
+        "first principal stress",
+        r"$\sigma_1$",
+        "stress",
+        True,
+    ),
+    "principal_stress_2": (
+        "második főfeszültség",
+        "second principal stress",
+        r"$\sigma_2$",
+        "stress",
+        True,
+    ),
+    "displacement_magnitude": (
+        "elmozdulás nagysága",
+        "displacement magnitude",
+        r"$|\mathbf{u}|$",
+        "displacement",
+        False,
+    ),
+    "displacement_x": ("x irányú elmozdulás", "x displacement", r"$u_x$", "displacement", True),
+    "displacement_y": ("y irányú elmozdulás", "y displacement", r"$u_y$", "displacement", True),
+}
+
+
+def _field_info(field: str):
+    """A csomóponti előtagtól független tudományos mezőmetaadatot ad."""
+
+    return _FIELD_INFO[field.removeprefix("nodal_")]
+
+
+def _scaled_field(values, field: str, style: PlotStyle):
+    """Közös mérnöki kitevőre skálázott mezőt és szakszerű címkét készít."""
+
+    array = np.asarray(values, dtype=float)
+    hungarian, english, symbol, quantity, signed = _field_info(field)
+    maximum = float(np.max(np.abs(array), initial=0.0))
+    exponent = 0
+    if style.engineering_scaling and maximum > 0.0 and (maximum >= 1.0e4 or maximum < 1.0e-2):
+        exponent = 3 * int(np.floor(np.log10(maximum) / 3.0))
+    displayed = array / (10.0**exponent)
+    unit = style.stress_unit if quantity == "stress" else style.effective_displacement_unit
+    multiplier = rf"$\times 10^{{{exponent}}}$ " if exponent else ""
+    unit_text = f"{multiplier}{unit}" if unit else multiplier.rstrip()
+    colour_label = f"{symbol} [{unit_text}]" if unit_text else symbol
+    return displayed, style.text(hungarian, english), colour_label, signed
+
+
+def _field_norm(values: np.ndarray, signed: bool):
+    """Előjeles mezőnél nullaközepű, egyébként adatvezérelt normálást ad."""
+
+    minimum = float(np.min(values))
+    maximum = float(np.max(values))
+    if np.isclose(minimum, maximum):
+        padding = max(abs(minimum), 1.0) * 1.0e-9
+        return Normalize(vmin=minimum - padding, vmax=maximum + padding)
+    if signed and minimum < 0.0 < maximum:
+        limit = max(abs(minimum), abs(maximum))
+        return TwoSlopeNorm(vmin=-limit, vcenter=0.0, vmax=limit)
+    return Normalize(vmin=minimum, vmax=maximum)
 
 
 def plot_result(
@@ -329,9 +562,10 @@ def plot_result(
     *,
     scale: float = 1.0,
     field: str = "von_mises",
-    cmap: str = "viridis",
+    cmap: str | None = None,
     show_undeformed: bool = True,
     ax=None,
+    style: PlotStyle | None = None,
 ):
     """Színezett eredménymezőt rajzol a skálázott deformált hálóra.
 
@@ -362,28 +596,39 @@ def plot_result(
         raise ValueError(f"unknown field {field!r}; choose one of {available}")
     if ax is None:
         _, ax = plt.subplots()
+    style = _style(style)
     nodes = result.displaced_nodes(scale)
     if show_undeformed and scale != 0.0:
         _draw_undeformed(result.model.mesh, ax)
     if field in cell_fields:
-        polygons = [nodes[list(element.node_ids)] for element in result.model.mesh.elements]
+        values, readable_field, colour_label, signed = _scaled_field(
+            cell_fields[field], field, style
+        )
+        polygons = _polygons(result.model.mesh, nodes)
+        selected_cmap = cmap or ("coolwarm" if signed else "viridis")
         artist = PolyCollection(
             polygons,
-            array=np.asarray(cell_fields[field]),
-            cmap=cmap,
+            array=values,
+            cmap=selected_cmap,
+            norm=_field_norm(values, signed),
             edgecolors="#263238",
             linewidths=0.25,
         )
         ax.add_collection(artist)
     else:
+        values, readable_field, colour_label, signed = _scaled_field(
+            nodal_fields[field], field, style
+        )
+        selected_cmap = cmap or ("coolwarm" if signed else "viridis")
         triangulation = Triangulation(nodes[:, 0], nodes[:, 1], _triangles(result.model.mesh))
         artist = ax.tripcolor(
             triangulation,
-            np.asarray(nodal_fields[field]),
+            values,
             shading="gouraud",
-            cmap=cmap,
+            cmap=selected_cmap,
+            norm=_field_norm(values, signed),
         )
-        polygons = [nodes[list(element.node_ids)] for element in result.model.mesh.elements]
+        polygons = _polygons(result.model.mesh, nodes)
         ax.add_collection(
             PolyCollection(
                 polygons,
@@ -393,12 +638,15 @@ def plot_result(
             )
         )
     ax.autoscale()
-    ax.set_aspect("equal")
-    readable_field = field.replace("_", " ").title()
-    ax.set_title(f"{readable_field}\n(displacement ×{scale:g})", fontsize=10)
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
-    _add_colour_bar(ax, artist, field)
+    ax.margins(0.04)
+    scale_text = style.number(scale)
+    subtitle = style.text(
+        f"deformáció nagyítása: {scale_text}×",
+        f"deformation scale: {scale_text}×",
+    )
+    ax.set_title(f"{readable_field}\n{subtitle}", fontsize=10, fontweight="semibold")
+    _format_axes(ax, style)
+    _add_colour_bar(ax, artist, colour_label, style)
     return ax
 
 
@@ -409,6 +657,7 @@ def plot_principal_directions(
     stride: int = 1,
     cmap: str = "coolwarm",
     ax=None,
+    style: PlotStyle | None = None,
 ):
     """Az első főfeszültség irányát és előjeles nagyságát nyilakkal rajzolja.
 
@@ -420,10 +669,11 @@ def plot_principal_directions(
         raise ValueError("stride must be at least 1")
     if ax is None:
         _, ax = plt.subplots()
+    style = _style(style)
     if scale != 0.0:
         _draw_undeformed(result.model.mesh, ax)
     all_nodes = result.displaced_nodes(scale)
-    polygons = [all_nodes[list(element.node_ids)] for element in result.model.mesh.elements]
+    polygons = _polygons(result.model.mesh, all_nodes)
     ax.add_collection(
         PolyCollection(
             polygons,
@@ -434,7 +684,9 @@ def plot_principal_directions(
     )
     nodes = all_nodes[::stride]
     angle = result.nodal_principal_angle[::stride]
-    magnitude = result.nodal_principal_stress[::stride, 0]
+    magnitude, _, colour_label, signed = _scaled_field(
+        result.nodal_principal_stress[::stride, 0], "principal_stress_1", style
+    )
     direction_x = np.cos(angle)
     direction_y = np.sin(angle)
     arrows = ax.quiver(
@@ -444,16 +696,19 @@ def plot_principal_directions(
         direction_y,
         magnitude,
         cmap=cmap,
+        norm=_field_norm(magnitude, signed),
         angles="xy",
         scale_units="xy",
         scale=None,
         pivot="middle",
         width=0.004,
     )
-    _add_colour_bar(ax, arrows, "principal_stress_1")
-    ax.set_title("First Principal Stress Directions", fontsize=10)
+    _add_colour_bar(ax, arrows, colour_label, style)
+    ax.set_title(
+        style.text("Első főfeszültségi irányok", "First principal stress directions"),
+        fontsize=10,
+        fontweight="semibold",
+    )
     ax.autoscale()
-    ax.set_aspect("equal")
-    ax.set_xlabel("x")
-    ax.set_ylabel("y")
+    _format_axes(ax, style)
     return ax

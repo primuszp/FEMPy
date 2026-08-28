@@ -4,7 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from fempy import load_myfem
+from fempy import PlotStyle, load_myfem
 
 sample_directory = Path(__file__).with_name("femaster_samples")
 sample_names = (
@@ -30,6 +30,7 @@ figure.subplots_adjust(
     wspace=0.40,
     hspace=0.42,
 )
+style = PlotStyle(language="hu")
 for ax, sample_name in zip(axes.flat, sample_names, strict=True):
     model = load_myfem(sample_directory / sample_name)
     result = model.solve()
@@ -37,17 +38,17 @@ for ax, sample_name in zip(axes.flat, sample_names, strict=True):
     result.plot(
         scale=display_scale,
         field="nodal_von_mises",
-        cmap="turbo",
         ax=ax,
+        style=style,
     )
     ax.set_title(
         f"{Path(sample_name).stem}\n"
-        f"{model.mesh.node_count} nodes · {model.mesh.element_count} triangles",
+        f"{model.mesh.node_count} csomópont · {model.mesh.element_count} háromszög",
         fontsize=10,
     )
     print(result.summary())
 
-figure.suptitle("FEMaster2D samples imported into FEMPy Edu", fontsize=16)
+figure.suptitle("FEMaster2D minták egységes FEMPy kiértékelése", fontsize=16)
 output = Path(__file__).with_name("colored_femaster_samples.png")
 figure.savefig(output, dpi=170)
 print(f"Saved: {output}")

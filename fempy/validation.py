@@ -21,7 +21,7 @@ import numpy as np
 
 from .elements import Quad4, Triangle3
 from .material import LinearElasticMaterial
-from .mesh import Mesh, rectangular_quad_mesh, rectangular_tri_mesh
+from .mesh import Mesh, rectangular_quad_mesh, rectangular_tri_mesh, to_quadratic_tri_mesh
 from .model import Model
 
 
@@ -246,7 +246,9 @@ def cantilever_validation(element_shape: str) -> ValidationCase:
 def cooks_membrane_validation(element_shape: str) -> ValidationCase:
     """A klasszikus torzított Cook-membrán csúcselmozdulását ellenőrzi."""
 
-    reference = 23.9
+    # A magasabb rendű elem már érzékenyen megkülönbözteti a szakirodalomban
+    # gyakran 23,9-re kerekített és a finom hálós 23,96 referenciaértéket.
+    reference = 23.96 if element_shape == "triangle6" else 23.9
     levels = (2, 4, 8, 16, 32)
     samples = []
     for divisions in levels:
@@ -266,7 +268,7 @@ def cooks_membrane_validation(element_shape: str) -> ValidationCase:
                 abs((value - reference) / reference),
             )
         )
-    tolerance = 0.01 if element_shape == "quad" else 0.03
+    tolerance = 0.01 if element_shape in ("quad", "triangle6") else 0.03
     return ValidationCase(
         "Cook-membrán",
         _element_label(element_shape),
@@ -280,10 +282,10 @@ def cooks_membrane_validation(element_shape: str) -> ValidationCase:
 
 
 def run_classic_validations() -> ValidationReport:
-    """Lefuttatja a Triangle3 és Quad4 klasszikus verifikációs csomagját."""
+    """Lefuttatja a Triangle3, Triangle6 és Quad4 klasszikus próbáit."""
 
     cases = []
-    for shape in ("quad", "triangle"):
+    for shape in ("quad", "triangle", "triangle6"):
         cases.extend(
             (
                 uniaxial_patch_validation(shape),
@@ -299,7 +301,7 @@ def _rectangle_with_boundaries(nx: int, ny: int, width: float, height: float, sh
 
     if shape == "quad":
         base = rectangular_quad_mesh(nx, ny, width, height)
-    elif shape == "triangle":
+    elif shape in ("triangle", "triangle6"):
         base = rectangular_tri_mesh(nx, ny, width, height)
     else:
         raise ValueError("element_shape must be 'quad' or 'triangle'")
@@ -307,7 +309,7 @@ def _rectangle_with_boundaries(nx: int, ny: int, width: float, height: float, sh
     top = [ny * (nx + 1) + index for index in range(nx + 1)]
     left = [row * (nx + 1) for row in range(ny + 1)]
     right = [row * (nx + 1) + nx for row in range(ny + 1)]
-    return Mesh(
+    mesh = Mesh(
         base.nodes,
         base.elements,
         node_sets={"bottom": bottom, "right": right, "top": top, "left": left},
@@ -318,6 +320,7 @@ def _rectangle_with_boundaries(nx: int, ny: int, width: float, height: float, sh
             "left": list(pairwise(reversed(left))),
         },
     )
+    return to_quadratic_tri_mesh(mesh) if shape == "triangle6" else mesh
 
 
 def _cook_mesh(divisions: int, shape: str) -> Mesh:
@@ -340,7 +343,7 @@ def _cook_mesh(divisions: int, shape: str) -> Mesh:
             upper_right = upper_left + 1
             if shape == "quad":
                 elements.append(Quad4((lower_left, lower_right, upper_right, upper_left)))
-            elif shape == "triangle":
+            elif shape in ("triangle", "triangle6"):
                 elements.extend(
                     (
                         Triangle3((lower_left, lower_right, upper_right)),
@@ -351,15 +354,19 @@ def _cook_mesh(divisions: int, shape: str) -> Mesh:
                 raise ValueError("element_shape must be 'quad' or 'triangle'")
     left = [row * (divisions + 1) for row in range(divisions + 1)]
     right = [row * (divisions + 1) + divisions for row in range(divisions + 1)]
-    return Mesh(
+    mesh = Mesh(
         nodes,
         elements,
         node_sets={"left": left, "right": right},
-        edge_sets={"right": list(pairwise(right))},
+        edge_sets={
+            "left": list(pairwise(reversed(left))),
+            "right": list(pairwise(right)),
+        },
     )
+    return to_quadratic_tri_mesh(mesh) if shape == "triangle6" else mesh
 
 
 def _element_label(shape: str) -> str:
     """A rövid hálóalakból publikus elemnevet képez."""
 
-    return "Quad4" if shape == "quad" else "Triangle3"
+    return {"quad": "Quad4", "triangle": "Triangle3", "triangle6": "Triangle6"}[shape]

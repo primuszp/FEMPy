@@ -14,7 +14,7 @@ from types import MappingProxyType
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
-from .elements import Element2D, Quad4, Triangle3
+from .elements import Element2D, Quad4, Triangle3, Triangle6
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,13 +27,14 @@ class Mesh:
 
     Args:
         nodes: Kétdimenziós koordinátatömb vagy beágyazott lista.
-        elements: :class:`Triangle3` és/vagy :class:`Quad4` objektumok.
+        elements: :class:`Triangle3`, :class:`Triangle6` és/vagy
+            :class:`Quad4` objektumok.
     """
 
     nodes: NDArray[np.float64]
     elements: tuple[Element2D, ...]
     node_sets: Mapping[str, tuple[int, ...]]
-    edge_sets: Mapping[str, tuple[tuple[int, int], ...]]
+    edge_sets: Mapping[str, tuple[tuple[int, ...], ...]]
 
     def __init__(
         self,
@@ -41,7 +42,7 @@ class Mesh:
         elements: Iterable[Element2D],
         *,
         node_sets: Mapping[str, Iterable[int]] | None = None,
-        edge_sets: Mapping[str, Iterable[tuple[int, int]]] | None = None,
+        edge_sets: Mapping[str, Iterable[tuple[int, ...]]] | None = None,
     ):
         # Saját másolat kell: az írásvédelem így nem módosítja a hívó által
         # átadott eredeti NumPy-tömb ``writeable`` állapotát.
@@ -122,8 +123,12 @@ class Mesh:
             )
         return list(self.node_sets[name])
 
-    def boundary_edges(self, name: str) -> list[tuple[int, int]]:
-        """Visszaadja egy elnevezett perem kétcsomópontos éleit."""
+    def boundary_edges(self, name: str) -> list[tuple[int, ...]]:
+        """Visszaadja a perem éleit geometriai sorrendben.
+
+        Lineáris peremnél egy él ``(első, utolsó)``, T6 peremnél
+        ``(első, középső, utolsó)`` alakú.
+        """
 
         if name not in self.edge_sets:
             raise KeyError(
@@ -131,12 +136,12 @@ class Mesh:
             )
         return list(self.edge_sets[name])
 
-    def plot(self, *, ax=None, show_node_ids: bool = False):
+    def plot(self, *, ax=None, show_node_ids: bool = False, style=None):
         """Matplotlib-ábrán megjeleníti a hálót."""
 
         from .plotting import plot_mesh
 
-        return plot_mesh(self, ax=ax, show_node_ids=show_node_ids)
+        return plot_mesh(self, ax=ax, show_node_ids=show_node_ids, style=style)
 
     def plot_boundaries(
         self,
@@ -145,6 +150,7 @@ class Mesh:
         ax=None,
         show_mesh: bool = True,
         show_labels: bool = True,
+        style=None,
     ):
         """A névvel ellátott peremeket külön színekkel jeleníti meg."""
 
@@ -156,6 +162,7 @@ class Mesh:
             ax=ax,
             show_mesh=show_mesh,
             show_labels=show_labels,
+            style=style,
         )
 
 
@@ -176,16 +183,22 @@ def _validate_node_sets(
 
 
 def _validate_edge_sets(
-    edge_sets: Mapping[str, Iterable[tuple[int, int]]], node_count: int
-) -> dict[str, tuple[tuple[int, int], ...]]:
+    edge_sets: Mapping[str, Iterable[tuple[int, ...]]], node_count: int
+) -> dict[str, tuple[tuple[int, ...], ...]]:
     """Ellenőrzi a pereméleket, miközben megtartja azok geometriai irányát."""
 
     checked = {}
     for name, edges in edge_sets.items():
         if not isinstance(name, str) or not name.strip():
             raise ValueError("edge-set names must be non-empty strings")
-        values = tuple(dict.fromkeys((int(edge[0]), int(edge[1])) for edge in edges))
-        if any(a == b or min(a, b) < 0 or max(a, b) >= node_count for a, b in values):
+        values = tuple(dict.fromkeys(tuple(map(int, edge)) for edge in edges))
+        if any(
+            len(edge) not in (2, 3)
+            or len(set(edge)) != len(edge)
+            or min(edge) < 0
+            or max(edge) >= node_count
+            for edge in values
+        ):
             raise IndexError(f"edge set {name!r} contains an invalid edge")
         checked[name] = values
     return checked
@@ -252,3 +265,68 @@ def rectangular_tri_mesh(
         n1, n2, n3, n4 = element.node_ids
         triangles.extend((Triangle3((n1, n2, n3)), Triangle3((n1, n3, n4))))
     return Mesh(quad_mesh.nodes, triangles)
+
+
+def to_quadratic_tri_mesh(mesh: Mesh) -> Mesh:
+    """Lineáris Triangle3 hálót közös középcsomópontú T6 hálóvá emel.
+
+    Minden topológiai él pontosan egy új középcsomópontot kap, ezért a
+    szomszédos elemek kompatibilisek maradnak. Az elnevezett peremélek két
+    lineáris szakaszra bomlanak, a középcsomópont pedig bekerül a megfelelő
+    perem csomóponthalmazába. Görbült CAD-peremhez közvetlenül a
+    :class:`fempy.gmsh.GmshMesher` ``order=2`` módja ajánlott, mert az a
+    középcsomópontot a valódi görbére helyezi.
+    """
+
+    if not all(isinstance(element, Triangle3) for element in mesh.elements):
+        raise TypeError("to_quadratic_tri_mesh requires a Triangle3-only mesh")
+
+    coordinates = mesh.nodes.tolist()
+    midpoint_by_edge: dict[tuple[int, int], int] = {}
+
+    def midpoint(first: int, second: int) -> int:
+        key = tuple(sorted((first, second)))
+        if key not in midpoint_by_edge:
+            midpoint_by_edge[key] = len(coordinates)
+            coordinates.append((0.5 * (mesh.nodes[first] + mesh.nodes[second])).tolist())
+        return midpoint_by_edge[key]
+
+    elements = []
+    for element in mesh.elements:
+        first, second, third = element.node_ids
+        elements.append(
+            Triangle6(
+                (
+                    first,
+                    second,
+                    third,
+                    midpoint(first, second),
+                    midpoint(second, third),
+                    midpoint(third, first),
+                )
+            )
+        )
+
+    edge_sets: dict[str, list[tuple[int, ...]]] = {}
+    node_sets = {name: list(nodes) for name, nodes in mesh.node_sets.items()}
+    for name, edges in mesh.edge_sets.items():
+        split_edges = []
+        for first, second in edges:
+            middle = midpoint(first, second)
+            split_edges.append((first, middle, second))
+            node_sets.setdefault(name, []).append(middle)
+        edge_sets[name] = split_edges
+    return Mesh(coordinates, elements, node_sets=node_sets, edge_sets=edge_sets)
+
+
+def rectangular_t6_mesh(
+    nx: int,
+    ny: int,
+    width: float,
+    height: float,
+    *,
+    origin: tuple[float, float] = (0.0, 0.0),
+) -> Mesh:
+    """Strukturált téglalapot készít cellánként két kvadratikus T6 elemmel."""
+
+    return to_quadratic_tri_mesh(rectangular_tri_mesh(nx, ny, width, height, origin=origin))

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from fempy import Geometry2D, GmshMesher, LinearElasticMaterial, Model
+from fempy import Geometry2D, GmshMesher, LinearElasticMaterial, Model, PlotStyle
 
 geometry = Geometry2D("supports").add_rectangle(width=100.0, height=50.0)
 mesh = GmshMesher(element_size=7.0, element_shape="quad").generate(geometry)
@@ -20,7 +20,10 @@ top_nodes = mesh.boundary_nodes("top")
 model.add_nodal_load(top_nodes[len(top_nodes) // 2], fy=-1000.0)
 
 figure, axis = plt.subplots(figsize=(11, 5.8))
-model.plot_boundary_conditions(ax=axis)
+model.plot_boundary_conditions(
+    ax=axis,
+    style=PlotStyle(language="hu", length_unit="mm", stress_unit="MPa"),
+)
 axis.set_title("Kinematikai peremfeltételek és csomóponti terhelés")
 figure.tight_layout()
 output = Path(__file__).with_suffix(".png")

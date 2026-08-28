@@ -96,9 +96,27 @@ naturális tartományban. A kód minden Gauss-pontban:
 A négy pont koordinátája `±1/sqrt(3)`. Az eredmények csomópontokra történő
 extrapolációja a Gauss-ponti alakfüggvénymátrix inverzével történik.
 
+### `Triangle6` – T6
+
+A T6 csomópontsorrendje `(1, 2, 3, 12, 23, 31)`. A három sarokcsomópont után
+az oldalközépi csomópontok következnek. A hat kvadratikus alakfüggvény a
+baricentrikus `L1`, `L2`, `L3` koordinátákból épül fel:
+
+```text
+N1 = L1(2L1-1)   N4 = 4L1L2
+N2 = L2(2L2-1)   N5 = 4L2L3
+N3 = L3(2L3-1)   N6 = 4L3L1
+```
+
+A merevség és a tömeg hétpontos, ötödrendű Dunavant-szabállyal integrálódik.
+Egyenes oldalú T6 esetén ez a negyedfokú tömegintegrandust pontosan kezeli;
+görbült izoparametrikus elemnél nagy pontosságú numerikus integrálást ad. A hét
+integrációs pontból legkisebb négyzetes kvadratikus visszaillesztés adja a hat
+elemi csomópont feszültségét.
+
 ### Konzisztens tömegmátrix
 
-Mindkét elem megvalósítja a `mass_matrix()` metódust. Quad4 esetén:
+Mindhárom elem megvalósítja a `mass_matrix()` metódust. Quad4 esetén:
 
 ```text
 Me = integral(rho × thickness × Nᵀ N × det(J))
@@ -111,7 +129,7 @@ A testsúly csomóponti erővektora `Me @ acceleration`.
 A `Mesh` csak a következőket tárolja:
 
 - `(node_count, 2)` koordinátatömb;
-- Triangle3/Quad4 elemek tuple-je;
+- Triangle3/Triangle6/Quad4 elemek tuple-je;
 - opcionális, név szerinti csomópont- és peremélhalmazok.
 
 A konstruktor ellenőrzi:
@@ -157,6 +175,11 @@ A `GmshMesher.generate()` lépései:
 6. a Gmsh csomópontcímkéit tömör, nullától induló FEMPy indexekké alakítja;
 7. a fizikai peremeket `node_sets` és `edge_sets` alakban visszaadja.
 
+`order=2` esetén a Gmsh 6 csomópontos, 9-es típusú háromszöge Triangle6
+objektummá válik. A háromcsomópontos peremélek középcsomópontját is megőrizzük,
+ezért az íves geometria, a megtámasztás és a peremterhelés ugyanazt a
+másodrendű geometriát használja.
+
 Csak a kétdimenziós elemek által ténylegesen használt csomópontok kerülnek a
 `Mesh` objektumba. Ez kizárja a körközépponthoz hasonló geometriai segédpontok
 szabad szabadságfokait, amelyek különben szingulárissá tennék a rendszert.
@@ -177,6 +200,11 @@ f_node = traction × thickness × L / 2
 ```
 
 jut. A szomszédos élek közös csomóponti hozzájárulásai összeadódnak.
+
+T6 oldalon hárompontos vonalmenti Gauss-integrálás készíti a konzisztens
+terhelést. Egyenes, állandó traction esetén a sarok–közép–sarok arány
+`1/6 : 4/6 : 1/6`; görbült nyomásnál a normálvektor minden Gauss-pontban az
+izoparametrikus érintőből számolódik.
 
 Az `add_boundary_pressure()` minden peremélhez megkeresi az egyetlen
 szomszédos elemet. Az él középpontja és az elem centroidja alapján választja
@@ -313,8 +341,15 @@ result.nodal_principal_stress   # node_count × 2
 
 ## 8. `plotting.py` – ábrák és ritka mátrixok
 
-A `result.plot()` elem- és csomóponti mezőket is kezel. A Quad4 elemeket csak a
-megjelenítéshez két háromszögre bontja; ez a numerikus modellt nem módosítja.
+A `result.plot()` elem- és csomóponti mezőket is kezel. A Quad4 elemeket két, a
+Triangle6 elemeket négy megjelenítési háromszögre bontja; ez a numerikus modellt
+nem módosítja, viszont a T6 oldalközépi értékeit is megőrzi.
+
+A `PlotStyle` egy helyen rögzíti a nyelvet és a mértékegységeket. A saját
+számformázó nem függ az operációs rendszer telepített locale-beállításától:
+magyarul tizedesvesszőt, angolul tizedespontot használ. A feszültségmezőkhöz
+szabványos görög jelölés, előjeles mezőnél nullaközepű divergens színnorma,
+von Mises esetén szekvenciális skála és automatikus mérnöki kitevő tartozik.
 
 A merevségi mátrix mintája:
 

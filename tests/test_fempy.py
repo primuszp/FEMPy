@@ -12,13 +12,16 @@ from fempy import (
     Mesh,
     Model,
     PlaneCondition,
+    PlotStyle,
     Quad4,
     SolverMethod,
     SolverOptions,
     Triangle3,
+    Triangle6,
     load_myfem,
     load_protus,
     rectangular_quad_mesh,
+    rectangular_t6_mesh,
     run_classic_validations,
 )
 
@@ -93,6 +96,50 @@ class ElementTests(unittest.TestCase):
             model.prescribe(node, ux=0.01 * x + 0.03 * y, uy=-0.02 * y)
         result = model.solve()
         self.assertTrue(np.allclose(result.strain[0], [0.01, -0.02, 0.03], atol=1e-12))
+
+    def test_t6_patch_recovers_affine_strain_at_all_seven_integration_points(self):
+        mesh = rectangular_t6_mesh(1, 1, 2.0, 1.0)
+        model = Model(mesh, LinearElasticMaterial(1000.0, 0.2))
+        for node, (x, y) in enumerate(mesh.nodes):
+            model.prescribe(node, ux=0.01 * x + 0.03 * y, uy=-0.02 * y)
+        result = model.solve()
+        expected = np.array([0.01, -0.02, 0.03])
+        self.assertTrue(all(isinstance(element, Triangle6) for element in mesh.elements))
+        self.assertTrue(
+            all(
+                np.allclose(point.strain, expected, atol=1e-12)
+                for element in result.element_results
+                for point in element.integration_points
+            )
+        )
+        self.assertTrue(np.allclose(result.nodal_strain, expected, atol=1e-12))
+
+    def test_t6_consistent_mass_has_correct_total_mass_in_each_direction(self):
+        mesh = rectangular_t6_mesh(1, 1, 2.0, 1.0)
+        density = 3.0
+        thickness = 0.5
+        matrix = Model(
+            mesh,
+            LinearElasticMaterial(1000.0, 0.2, density=density),
+            thickness=thickness,
+        ).mass_matrix()
+        expected_mass = density * thickness * 2.0
+        self.assertAlmostEqual(matrix[0::2, 0::2].sum(), expected_mass, places=11)
+        self.assertAlmostEqual(matrix[1::2, 1::2].sum(), expected_mass, places=11)
+
+    def test_t6_edge_traction_uses_consistent_one_four_one_load_ratio(self):
+        nodes = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (0.5, 0.0), (0.5, 0.5), (0.0, 0.5)]
+        mesh = Mesh(
+            nodes,
+            [Triangle6((0, 1, 2, 3, 4, 5))],
+            node_sets={"bottom": (0, 3, 1)},
+            edge_sets={"bottom": ((0, 3, 1),)},
+        )
+        model = Model(mesh, LinearElasticMaterial(1000.0, 0.2))
+        model.add_boundary_traction("bottom", tx=6.0)
+        force_x = model.force_vector[0::2]
+        self.assertTrue(np.allclose(force_x[[0, 3, 1]], [1.0, 4.0, 1.0], atol=1e-12))
+        self.assertAlmostEqual(force_x.sum(), 6.0, places=12)
 
 
 class ModelTests(unittest.TestCase):
@@ -199,6 +246,27 @@ class ModelTests(unittest.TestCase):
             colour_axis.get_window_extent().height,
             places=8,
         )
+
+    def test_hungarian_plot_uses_decimal_comma_and_scientific_stress_notation(self):
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
+        from matplotlib.figure import Figure
+
+        mesh = rectangular_t6_mesh(1, 1, 1.0, 1.0)
+        model = Model(mesh, LinearElasticMaterial(210_000.0, 0.3))
+        for node, (x, _y) in enumerate(mesh.nodes):
+            model.prescribe(node, ux=0.1 * x, uy=0.0)
+        result = model.solve()
+        figure = Figure(figsize=(5, 3))
+        canvas = FigureCanvasAgg(figure)
+        axis = figure.subplots()
+        style = PlotStyle(language="hu", length_unit="mm", stress_unit="MPa")
+        result.plot(field="nodal_stress_x", ax=axis, style=style)
+        canvas.draw()
+        self.assertEqual(axis.xaxis.get_major_formatter()(1.5, 0), "1,5")
+        self.assertEqual(PlotStyle(language="en").number(1.5), "1.5")
+        self.assertIn("normálfeszültség", axis.get_title())
+        self.assertIn(r"$\sigma_x$", figure.axes[-1].get_ylabel())
+        self.assertIn(r"\times 10^{", figure.axes[-1].get_ylabel())
 
     def test_sparse_stiffness_is_symmetric(self):
         mesh = rectangular_quad_mesh(4, 2, 4.0, 2.0)
@@ -351,6 +419,18 @@ class GeometryAndMeshingTests(unittest.TestCase):
         self.assertGreater(len(mesh.boundary_nodes("hole")), 8)
         self.assertTrue(all(isinstance(element, Triangle3) for element in mesh.elements))
 
+    def test_real_gmsh_generates_t6_and_keeps_midside_boundary_nodes(self):
+        try:
+            import gmsh  # noqa: F401
+        except (ImportError, OSError):
+            self.skipTest("optional gmsh package is not installed")
+        geometry = Geometry2D("t6_test").add_rectangle(2.0, 1.0)
+        mesh = GmshMesher(0.4, order=2).generate(geometry)
+        self.assertTrue(all(isinstance(element, Triangle6) for element in mesh.elements))
+        self.assertTrue(all(len(element.node_ids) == 6 for element in mesh.elements))
+        self.assertGreater(len(mesh.boundary_nodes("bottom")), 5)
+        self.assertGreater(len(mesh.boundary_edges("bottom")), 4)
+
 
 class LegacyTests(unittest.TestCase):
     def test_myfem_import_and_solve(self):
@@ -392,8 +472,12 @@ class ClassicValidationTests(unittest.TestCase):
         report = self.report
         failures = [case.name + " / " + case.element for case in report.cases if not case.passed]
         self.assertTrue(report.passed, f"failed validation cases: {failures}")
-        self.assertEqual(len(report.cases), 6)
+        self.assertEqual(len(report.cases), 9)
         self.assertTrue(all(case.converges for case in report.cases if len(case.samples) > 1))
+
+        t6_cases = [case for case in report.cases if case.element == "Triangle6"]
+        self.assertEqual(len(t6_cases), 3)
+        self.assertTrue(all(case.passed for case in t6_cases))
 
     def test_cook_quad4_matches_published_coarse_mesh_value(self):
         report = self.report

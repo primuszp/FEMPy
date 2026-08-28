@@ -61,8 +61,9 @@ class ElementResult:
     """Egy elem középponti, Gauss-ponti és extrapolált eredményei.
 
     A ``strain`` és ``stress`` középponti érték. Az ``integration_points`` a
-    Quad4 esetén négy, Triangle3 esetén egy rekord. A ``nodal_*`` tömb még
-    elemenkénti extrapolált érték; a hálószintű átlagolás később történik.
+    Quad4 esetén négy, Triangle3 esetén egy, Triangle6 esetén hét rekord. A
+    ``nodal_*`` tömb még elemenkénti extrapolált érték; a hálószintű átlagolás
+    később történik.
     """
 
     strain: NDArray[np.float64]
@@ -254,9 +255,10 @@ class AnalysisResult:
         *,
         scale: float = 1.0,
         field: str = "von_mises",
-        cmap: str = "viridis",
+        cmap: str | None = None,
         show_undeformed: bool = True,
         ax=None,
+        style=None,
     ):
         """Deformált hálót rajzol választott elem- vagy csomóponti színezéssel."""
 
@@ -269,11 +271,14 @@ class AnalysisResult:
             cmap=cmap,
             show_undeformed=show_undeformed,
             ax=ax,
+            style=style,
         )
 
-    def plot_principal_directions(self, *, scale: float = 1.0, stride: int = 1, ax=None):
+    def plot_principal_directions(
+        self, *, scale: float = 1.0, stride: int = 1, ax=None, style=None
+    ):
         """Színezett első főfeszültségi iránynyilakat rajzol."""
 
         from .plotting import plot_principal_directions
 
-        return plot_principal_directions(self, scale=scale, stride=stride, ax=ax)
+        return plot_principal_directions(self, scale=scale, stride=stride, ax=ax, style=style)

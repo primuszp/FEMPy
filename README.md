@@ -24,6 +24,8 @@ Dokumentáció:
 
 - síkfeszültségi és síkalakváltozási lineáris rugalmasság;
 - háromcsomópontos CST háromszög (`Triangle3`);
+- hatcsomópontos kvadratikus háromszög (`Triangle6`, T6), hétpontos
+  Dunavant-integrálással;
 - négycsomópontos, bilineáris négyszög (`Quad4`), 2×2 Gauss-integrálással;
 - strukturált négyszög- és háromszögháló generálása;
 - tetszőleges sokszög és kör alakú lyukak modern Gmsh-hálózása;
@@ -36,7 +38,7 @@ Dokumentáció:
 - konzisztens tömegmátrix és testsúlyterhelés;
 - von Mises-feszültség, Matplotlib-ábra és teljes ParaView VTK-export;
 - a régi PROTUS és Myfem bemeneti fájlok beolvasása;
-- automatikus klasszikus FEM-verifikáció Triangle3 és Quad4 elemekre.
+- automatikus klasszikus FEM-verifikáció Triangle3, Triangle6 és Quad4 elemekre.
 
 ## Telepítés
 
@@ -116,6 +118,7 @@ geometry = (
 mesh = GmshMesher(
     element_size=4.0,        # globális cél-elemméret
     element_shape="triangle",
+    order=2,                 # T6; order=1 esetén Triangle3
 ).generate(geometry)
 
 steel = LinearElasticMaterial(210_000.0, 0.3)
@@ -128,6 +131,14 @@ result = model.solve()
 print(mesh.boundary_names)
 mesh.plot()
 result.plot(field="nodal_von_mises")
+```
+
+Strukturált T6 háló Gmsh nélkül is készíthető:
+
+```python
+from fempy import rectangular_t6_mesh
+
+mesh = rectangular_t6_mesh(nx=10, ny=4, width=100.0, height=40.0)
 ```
 
 Nyomás és előírt peremelmozdulás ugyanilyen név szerinti API-t használ:
@@ -180,8 +191,8 @@ A beépített esetek:
 
 - egytengelyű patch-próba egzakt homogén elmozdulás- és feszültségmezővel;
 - karcsú konzol Timoshenko-féle csúcselmozdulási referenciával;
-- Cook-membrán 23,9 referencia-csúcselmozdulással és öt hálószinttel;
-- mindhárom feladat külön Triangle3 és Quad4 elemekkel.
+- Cook-membrán konvergált referencia-csúcselmozdulással és öt hálószinttel;
+- mindhárom feladat külön Triangle3, Triangle6 és Quad4 elemekkel.
 
 Az elfogadás nemcsak a legfinomabb háló hibáját, hanem a hiba minden
 hálófinomításnál csökkenő tendenciáját is vizsgálja. A teljes futtatás:
@@ -194,6 +205,22 @@ Részletes módszertan: `docs/VALIDACIO.md`. Az aktuális újragenerált eredmé
 `examples/classic_validation_results.md`.
 
 ### Színezett Matplotlib-ábrák
+
+Az összes plot ugyanazt a `PlotStyle` objektumot használhatja. Magyar módban
+a számok tizedesvesszővel, angol módban tizedesponttal jelennek meg. A
+feszültségek szabványos $\sigma_x$, $\tau_{xy}$, $\sigma_1$ és
+$\sigma_\mathrm{vM}$ jelölést, explicit mértékegységet és szükség esetén közös
+mérnöki $10^{3n}$ skálát kapnak.
+
+```python
+from fempy import PlotStyle
+
+magyar = PlotStyle(language="hu", length_unit="mm", stress_unit="MPa")
+angol = PlotStyle(language="en", length_unit="mm", stress_unit="MPa")
+
+result.plot(field="nodal_von_mises", style=magyar)
+result.plot(field="nodal_stress_x", style=angol)
+```
 
 ```python
 result.plot(field="displacement_magnitude", cmap="magma", scale=100.0)
@@ -215,6 +242,7 @@ python examples/colored_cantilever.py
 python examples/colored_protus.py
 python examples/colored_femaster_samples.py
 python examples/sparse_matrix_visualization.py
+python examples/t6_localized_plots.py
 ```
 
 Az `examples/femaster_samples` könyvtár a FEMaster2D hat eredeti háromszög-

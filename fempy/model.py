@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 import numpy as np
 from scipy.sparse import coo_matrix, csr_matrix
 
+from .elements import Triangle6
 from .material import LinearElasticMaterial, PlaneCondition
 from .mesh import Mesh
 from .result import (
@@ -30,6 +31,49 @@ from .result import (
     principal_values,
 )
 from .solver import SolverInfo, SolverMethod, SolverOptions, solve_sparse_system
+
+
+def _element_boundary_edges(element) -> tuple[tuple[int, ...], ...]:
+    """Az elem topológiai oldalai, T6 esetén a középcsomóponttal."""
+
+    ids = element.node_ids
+    if isinstance(element, Triangle6):
+        return (
+            (ids[0], ids[3], ids[1]),
+            (ids[1], ids[4], ids[2]),
+            (ids[2], ids[5], ids[0]),
+        )
+    return tuple((ids[index], ids[(index + 1) % len(ids)]) for index in range(len(ids)))
+
+
+def _edge_quadrature(edge: tuple[int, ...], nodes: np.ndarray):
+    """Lineáris vagy kvadratikus él Gauss-pontjait és alakfüggvényeit adja.
+
+    Minden rekord ``(hely, érintő, alakfüggvény, súly)``. A hárompontos
+    Gauss-szabály a T6 él menti konzisztens terhelését és görbült geometriáját
+    is megfelelő rendben integrálja.
+    """
+
+    coordinates = nodes[list(edge)]
+    if len(edge) == 2:
+        points = ((0.0, 2.0),)
+    else:
+        gauss = np.sqrt(3.0 / 5.0)
+        points = ((-gauss, 5.0 / 9.0), (0.0, 8.0 / 9.0), (gauss, 5.0 / 9.0))
+    for coordinate, weight in points:
+        if len(edge) == 2:
+            shape = np.array((0.5 * (1.0 - coordinate), 0.5 * (1.0 + coordinate)))
+            derivative = np.array((-0.5, 0.5))
+        else:
+            shape = np.array(
+                (
+                    0.5 * coordinate * (coordinate - 1.0),
+                    1.0 - coordinate**2,
+                    0.5 * coordinate * (coordinate + 1.0),
+                )
+            )
+            derivative = np.array((coordinate - 0.5, -2.0 * coordinate, coordinate + 0.5))
+        yield shape @ coordinates, derivative @ coordinates, shape, weight
 
 
 @dataclass(slots=True)
@@ -169,10 +213,10 @@ class Model:
     def add_boundary_traction(self, name: str, *, tx: float = 0.0, ty: float = 0.0) -> Model:
         """Állandó felületi megoszló terhet integrál egy elnevezett peremen.
 
-        ``tx`` és ``ty`` erő/felület dimenziójú érték. Egy kétcsomópontos,
-        ``L`` hosszú peremél mindkét végpontjára ``traction * thickness * L/2``
-        konzisztens csomóponti erő jut. A közös csomópontok hozzájárulásai
-        automatikusan összeadódnak.
+        ``tx`` és ``ty`` erő/felület dimenziójú érték. Lineáris élen a szokásos
+        ``traction * thickness * L/2`` végponti erő adódik. T6 élen hárompontos
+        Gauss-integrálás kezeli a kvadratikus alakfüggvényeket és a görbült
+        geometriát. A közös csomópontok hozzájárulásai automatikusan összeadódnak.
         """
 
         if not np.isfinite(tx) or not np.isfinite(ty):
@@ -181,11 +225,15 @@ class Model:
         if not edges:
             raise ValueError(f"boundary {name!r} has no edges")
         traction = np.asarray([tx, ty], dtype=float)
-        for first, second in edges:
-            length = float(np.linalg.norm(self.mesh.nodes[second] - self.mesh.nodes[first]))
-            nodal_force = traction * self.thickness * length / 2.0
-            self._loads[2 * first : 2 * first + 2] += nodal_force
-            self._loads[2 * second : 2 * second + 2] += nodal_force
+        for edge in edges:
+            for _point, tangent, shape, weight in _edge_quadrature(edge, self.mesh.nodes):
+                jacobian = float(np.linalg.norm(tangent))
+                if jacobian <= np.finfo(float).eps:
+                    raise ValueError(f"boundary {name!r} contains a degenerate edge")
+                for node, shape_value in zip(edge, shape, strict=True):
+                    self._loads[2 * node : 2 * node + 2] += (
+                        traction * self.thickness * shape_value * jacobian * weight
+                    )
         return self
 
     def add_boundary_pressure(self, name: str, pressure: float) -> Model:
@@ -200,32 +248,26 @@ class Model:
             raise ValueError("pressure must be finite")
         adjacent_elements: dict[tuple[int, int], list] = {}
         for element in self.mesh.elements:
-            ids = element.node_ids
-            for index, first_node in enumerate(ids):
-                second_node = ids[(index + 1) % len(ids)]
-                key = tuple(sorted((first_node, second_node)))
+            for edge in _element_boundary_edges(element):
+                key = tuple(sorted((edge[0], edge[-1])))
                 adjacent_elements.setdefault(key, []).append(element)
-        for first, second in self.mesh.boundary_edges(name):
-            first_point = self.mesh.nodes[first]
-            second_point = self.mesh.nodes[second]
-            tangent = second_point - first_point
-            length = float(np.linalg.norm(tangent))
-            if length <= np.finfo(float).eps:
-                raise ValueError(f"boundary {name!r} contains a zero-length edge")
-            midpoint = 0.5 * (first_point + second_point)
-            adjacent = adjacent_elements.get(tuple(sorted((first, second))), [])
+        for edge in self.mesh.boundary_edges(name):
+            adjacent = adjacent_elements.get(tuple(sorted((edge[0], edge[-1]))), [])
             if len(adjacent) != 1:
-                raise ValueError(
-                    f"boundary edge {(first, second)} must have exactly one adjacent element"
-                )
+                raise ValueError(f"boundary edge {edge} must have exactly one adjacent element")
             centroid = self.mesh.nodes[list(adjacent[0].node_ids)].mean(axis=0)
-            outward = np.array([tangent[1], -tangent[0]], dtype=float) / length
-            if np.dot(outward, midpoint - centroid) < 0.0:
-                outward *= -1.0
-            # A pozitív mérnöki nyomás a test belseje felé hat.
-            nodal_force = -pressure * outward * self.thickness * length / 2.0
-            self._loads[2 * first : 2 * first + 2] += nodal_force
-            self._loads[2 * second : 2 * second + 2] += nodal_force
+            for point, tangent, shape, weight in _edge_quadrature(edge, self.mesh.nodes):
+                jacobian = float(np.linalg.norm(tangent))
+                if jacobian <= np.finfo(float).eps:
+                    raise ValueError(f"boundary {name!r} contains a degenerate edge")
+                outward = np.array([tangent[1], -tangent[0]], dtype=float) / jacobian
+                if np.dot(outward, point - centroid) < 0.0:
+                    outward *= -1.0
+                # A pozitív mérnöki nyomás a test belseje felé hat.
+                for node, shape_value in zip(edge, shape, strict=True):
+                    self._loads[2 * node : 2 * node + 2] += (
+                        -pressure * outward * self.thickness * shape_value * jacobian * weight
+                    )
         return self
 
     @property
@@ -258,6 +300,7 @@ class Model:
         ax=None,
         show_mesh: bool = True,
         show_loads: bool = True,
+        style=None,
     ):
         """Kirajzolja az x-, y- és kétirányú megtámasztásokat és a terheket."""
 
@@ -268,6 +311,7 @@ class Model:
             ax=ax,
             show_mesh=show_mesh,
             show_loads=show_loads,
+            style=style,
         )
 
     def solve(self, solver: SolverOptions | SolverMethod | str | None = None) -> AnalysisResult:
@@ -443,6 +487,7 @@ class Model:
         reduced: bool = False,
         max_points: int = 250_000,
         ax=None,
+        style=None,
     ):
         """Kirajzolja a merevségi mátrix szerkezetét vagy koefficienseit.
 
@@ -468,6 +513,7 @@ class Model:
             max_points=max_points,
             title=title,
             ax=ax,
+            style=style,
         )
 
     def mass_matrix(self):

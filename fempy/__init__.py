@@ -5,14 +5,21 @@ magas szintű fogalmakat exportálja. Így a felhasználónak nem kell belső
 modulútvonalakat ismernie; a részletes implementáció az almodulokban marad.
 """
 
-from .elements import Quad4, Triangle3
+from .elements import Quad4, Triangle3, Triangle6
 from .geometry import CircularArc2D, Geometry2D, LineSegment2D
 from .gmsh import GmshMesher, GmshNotInstalledError
 from .legacy import load_myfem, load_protus
 from .material import LinearElasticMaterial, PlaneCondition
-from .mesh import Mesh, rectangular_quad_mesh, rectangular_tri_mesh
+from .mesh import (
+    Mesh,
+    rectangular_quad_mesh,
+    rectangular_t6_mesh,
+    rectangular_tri_mesh,
+    to_quadratic_tri_mesh,
+)
 from .model import Model
 from .plotting import (
+    PlotStyle,
     plot_boundaries,
     plot_boundary_conditions,
     plot_mesh,
@@ -47,6 +54,7 @@ __all__ = [
     "Mesh",
     "Model",
     "PlaneCondition",
+    "PlotStyle",
     "Preconditioner",
     "Quad4",
     "SolverConvergenceError",
@@ -54,6 +62,7 @@ __all__ = [
     "SolverMethod",
     "SolverOptions",
     "Triangle3",
+    "Triangle6",
     "ValidationCase",
     "ValidationReport",
     "load_myfem",
@@ -63,8 +72,10 @@ __all__ = [
     "plot_mesh",
     "plot_sparse_matrix",
     "rectangular_quad_mesh",
+    "rectangular_t6_mesh",
     "rectangular_tri_mesh",
     "run_classic_validations",
+    "to_quadratic_tri_mesh",
 ]
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"

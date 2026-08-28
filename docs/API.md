@@ -13,7 +13,8 @@ Mesh + Material ───────────▶ Model ──solve()──�
 ```
 
 Strukturált feladatnál a `Geometry2D` és `GmshMesher` helyett közvetlenül a
-`rectangular_quad_mesh()` vagy `rectangular_tri_mesh()` használható.
+`rectangular_quad_mesh()`, `rectangular_tri_mesh()` vagy
+`rectangular_t6_mesh()` használható.
 
 ## Geometria és háló
 
@@ -34,7 +35,9 @@ mesh = GmshMesher(element_size=4.0, element_shape="quad").generate(geometry)
 | `add_loop(segments)` | egyenesekből és körívekből álló kontúr |
 | `set_boundary_size(name, size)` | helyi hálófinomítás |
 | `GmshMesher(size, "triangle")` | Triangle3 háló |
+| `GmshMesher(size, "triangle", order=2)` | másodrendű Triangle6 (T6) háló |
 | `GmshMesher(size, "quad")` | rekombinált Quad4 vagy vegyes háló |
+| `to_quadratic_tri_mesh(mesh)` | meglévő Triangle3 háló kompatibilis T6 hálóvá emelése |
 
 Lekérdezés és ábrázolás:
 
@@ -140,10 +143,19 @@ result.solver_info
 
 ```python
 print(result.summary())
-result.plot(field="nodal_von_mises", scale=result.suggested_deformation_scale())
+style = PlotStyle(language="hu", length_unit="mm", stress_unit="MPa")
+result.plot(
+    field="nodal_von_mises",
+    scale=result.suggested_deformation_scale(),
+    style=style,
+)
 result.plot_principal_directions()
 result.write_vtk("result.vtk")
 ```
+
+`PlotStyle(language="hu")` minden lebegőpontos skálán tizedesvesszőt,
+`PlotStyle(language="en")` tizedespontot használ. A feszültségmezők görög
+szimbólumot, megadott mértékegységet és automatikus mérnöki kitevőt kapnak.
 
 ## Diagnosztika és validáció
 

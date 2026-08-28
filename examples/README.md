@@ -16,6 +16,7 @@ Ajánlott tanulási sorrend:
 | `boundary_conditions.py` | x/y/kétirányú megtámasztás és terhelésnyíl | igen |
 | `gmsh_plate_with_hole.py` | Triangle3 háló, lyuk, helyi finomítás | igen |
 | `gmsh_quad_mesh.py` | Quad4 rekombináció és peremcímkék | igen |
+| `t6_localized_plots.py` | T6, kvadratikus peremterhelés, magyar/angol tudományos plot | igen |
 | `pressurized_hole.py` | normális nyomás a furat peremén | igen |
 | `sparse_matrix_visualization.py` | CSR szerkezet és memóriahasználat | nem |
 | `validate_classic_fem.py` | patch, konzol és Cook benchmark | nem |

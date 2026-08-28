@@ -4,7 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from fempy import Geometry2D, GmshMesher, LinearElasticMaterial, Model
+from fempy import Geometry2D, GmshMesher, LinearElasticMaterial, Model, PlotStyle
 
 # A négy téglalapoldal automatikusan bottom/right/top/left nevet kap. A kör
 # külön "hole" perem, amelyhez kisebb helyi elemméretet kérünk.
@@ -26,16 +26,17 @@ model.fix_boundary("left")
 model.add_boundary_traction("right", ty=-2.0)
 result = model.solve()
 
-figure, axes = plt.subplots(1, 2, figsize=(11, 4.5))
-mesh.plot(ax=axes[0])
+style = PlotStyle(language="hu", length_unit="mm", stress_unit="MPa")
+figure, axes = plt.subplots(1, 2, figsize=(12, 5.0))
+figure.subplots_adjust(left=0.07, right=0.94, bottom=0.13, top=0.86, wspace=0.38)
+mesh.plot(ax=axes[0], style=style)
 axes[0].set_title(f"Gmsh háló: {mesh.node_count} csomópont, {mesh.element_count} elem")
 result.plot(
     field="nodal_von_mises",
     scale=result.suggested_deformation_scale(),
     ax=axes[1],
+    style=style,
 )
-axes[1].set_title("von Mises-feszültség")
-figure.tight_layout()
 output = Path(__file__).with_suffix(".png")
 figure.savefig(output, dpi=180)
 print(result.summary())

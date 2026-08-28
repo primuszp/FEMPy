@@ -1,11 +1,12 @@
 """Kétdimenziós kontinuum végeselemek.
 
-A modul két oktatási szempontból fontos elemet valósít meg:
+A modul három oktatási szempontból fontos elemet valósít meg:
 
 * :class:`Triangle3`: háromcsomópontos, állandó alakváltozású háromszög (CST);
+* :class:`Triangle6`: hatcsomópontos, kvadratikus izoparametrikus háromszög (T6);
 * :class:`Quad4`: négycsomópontos bilineáris négyszög 2×2 Gauss-integrálással.
 
-Mindkét elem ugyanazt a kis interfészt követi. Az elem csak lokális műveleteket
+Mindhárom elem ugyanazt a kis interfészt követi. Az elem csak lokális műveleteket
 végez: ``B`` mátrix, elemi merevség, tömegmátrix és eredménykinyerés. A globális
 összeállítás a :mod:`fempy.model` feladata.
 """
@@ -154,6 +155,142 @@ class Triangle3:
         total_mass = density * thickness * self.area(coordinates)
         scalar = total_mass / 12.0 * np.array([[2.0, 1.0, 1.0], [1.0, 2.0, 1.0], [1.0, 1.0, 2.0]])
         return np.kron(scalar, np.eye(2))
+
+
+@dataclass(frozen=True, slots=True)
+class Triangle6:
+    """Hatcsomópontos, kvadratikus izoparametrikus háromszög (T6).
+
+    A lokális csomópontsorrend ``(1, 2, 3, 12, 23, 31)``: előbb a három
+    sarokcsomópont következik pozitív körüljárással, majd rendre az 1–2, 2–3
+    és 3–1 oldal középcsomópontja. Ez megegyezik a Gmsh másodrendű
+    háromszögének sorrendjével.
+
+    A merevség és a konzisztens tömeg integrálása a hétpontos, ötödrendű
+    Dunavant-szabállyal történik. A szabály a kvadratikus alakfüggvényekből
+    képzett tömegintegrandushoz is elegendő pontosságú, és görbült oldalaknál
+    is robusztusabb a minimális hárompontos formulánál.
+    """
+
+    node_ids: tuple[int, int, int, int, int, int]
+    vtk_cell_type: int = 22  # VTK_QUADRATIC_TRIANGLE
+
+    def __post_init__(self) -> None:
+        if len(set(self.node_ids)) != 6:
+            raise ValueError("Triangle6 needs six different nodes")
+
+    @staticmethod
+    def _shape(xi: float, eta: float) -> FloatArray:
+        """A hat kvadratikus alakfüggvény értéke a referenciaháromszögben."""
+
+        l1 = 1.0 - xi - eta
+        l2 = xi
+        l3 = eta
+        return np.array(
+            [
+                l1 * (2.0 * l1 - 1.0),
+                l2 * (2.0 * l2 - 1.0),
+                l3 * (2.0 * l3 - 1.0),
+                4.0 * l1 * l2,
+                4.0 * l2 * l3,
+                4.0 * l3 * l1,
+            ],
+            dtype=float,
+        )
+
+    @staticmethod
+    def _natural_gradient(xi: float, eta: float) -> FloatArray:
+        """Az alakfüggvények ``xi`` és ``eta`` szerinti deriváltjai."""
+
+        l1 = 1.0 - xi - eta
+        l2 = xi
+        l3 = eta
+        return np.array(
+            [
+                [-(4.0 * l1 - 1.0), 4.0 * l2 - 1.0, 0.0, 4.0 * (l1 - l2), 4.0 * l3, -4.0 * l3],
+                [-(4.0 * l1 - 1.0), 0.0, 4.0 * l3 - 1.0, -4.0 * l2, 4.0 * l2, 4.0 * (l1 - l3)],
+            ],
+            dtype=float,
+        )
+
+    @classmethod
+    def _b_matrix(cls, coordinates: FloatArray, xi: float, eta: float) -> tuple[FloatArray, float]:
+        """Fizikai ``B`` mátrixot és pozitív Jacobi-determinánst számít."""
+
+        natural_gradient = cls._natural_gradient(xi, eta)
+        jacobian = natural_gradient @ coordinates
+        determinant = float(np.linalg.det(jacobian))
+        if determinant <= 0.0:
+            raise ValueError("Triangle6 has an inverted or degenerate Jacobian")
+        spatial_gradient = np.linalg.solve(jacobian, natural_gradient)
+        return _strain_matrix(spatial_gradient), determinant
+
+    @staticmethod
+    def _quadrature() -> tuple[tuple[float, float, float], ...]:
+        """A referenciaháromszög hétpontos Dunavant-integrálási szabálya."""
+
+        first_a, first_b = 0.059715871789770, 0.470142064105115
+        second_a, second_b = 0.797426985353087, 0.101286507323456
+        return (
+            (1.0 / 3.0, 1.0 / 3.0, 0.1125),
+            (first_a, first_b, 0.066197076394253),
+            (first_b, first_a, 0.066197076394253),
+            (first_b, first_b, 0.066197076394253),
+            (second_a, second_b, 0.062969590272414),
+            (second_b, second_a, 0.062969590272414),
+            (second_b, second_b, 0.062969590272414),
+        )
+
+    def area(self, coordinates: FloatArray) -> float:
+        """A görbült T6 elem integrált területe, teljes Jacobian-ellenőrzéssel."""
+
+        return float(sum(weight for _, _, weight in self.integration_data(coordinates)))
+
+    def stiffness(
+        self, coordinates: FloatArray, constitutive: FloatArray, thickness: float
+    ) -> FloatArray:
+        """Kiszámítja a 12×12-es T6 elemi merevségi mátrixot."""
+
+        matrix = np.zeros((12, 12), dtype=float)
+        for _, b_matrix, weight in self.integration_data(coordinates):
+            matrix += thickness * weight * (b_matrix.T @ constitutive @ b_matrix)
+        return matrix
+
+    def strain_at_center(self, coordinates: FloatArray, displacement: FloatArray) -> FloatArray:
+        """Alakváltozás a háromszög súlypontjában."""
+
+        b_matrix, _ = self._b_matrix(coordinates, 1.0 / 3.0, 1.0 / 3.0)
+        return b_matrix @ displacement
+
+    def integration_data(
+        self, coordinates: FloatArray
+    ) -> tuple[tuple[tuple[float, float], FloatArray, float], ...]:
+        """Hét rekordot ad: naturális hely, ``B`` mátrix és fizikai súly."""
+
+        data = []
+        for xi, eta, reference_weight in self._quadrature():
+            b_matrix, determinant = self._b_matrix(coordinates, xi, eta)
+            data.append(((xi, eta), b_matrix, determinant * reference_weight))
+        return tuple(data)
+
+    def extrapolate_to_nodes(self, integration_values: FloatArray) -> FloatArray:
+        """A hét Gauss-pont értékeire kvadratikus mezőt illeszt a hat csomópontra."""
+
+        values = np.asarray(integration_values, dtype=float)
+        if values.shape[0] != 7:
+            raise ValueError("Triangle6 expects seven integration-point values")
+        interpolation = np.vstack([self._shape(xi, eta) for xi, eta, _ in self._quadrature()])
+        nodal_values, *_ = np.linalg.lstsq(interpolation, values, rcond=None)
+        return nodal_values
+
+    def mass_matrix(self, coordinates: FloatArray, density: float, thickness: float) -> FloatArray:
+        """Konzisztens 12×12-es tömegmátrixot integrál a görbült geometrián."""
+
+        matrix = np.zeros((12, 12), dtype=float)
+        for (xi, eta), _, weight in self.integration_data(coordinates):
+            shape = self._shape(xi, eta)
+            matrix += density * thickness * weight * np.kron(np.outer(shape, shape), np.eye(2))
+        return matrix
 
 
 @dataclass(frozen=True, slots=True)

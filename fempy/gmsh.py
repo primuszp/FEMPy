@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 import numpy as np
 
-from .elements import Quad4, Triangle3
+from .elements import Quad4, Triangle3, Triangle6
 from .geometry import Geometry2D
 from .mesh import Mesh
 
@@ -27,7 +27,8 @@ class GmshMesher:
     Args:
         element_size: Globális cél-elemméret a geometria mértékegységében.
         element_shape: ``"triangle"`` vagy ``"quad"``.
-        order: Jelenleg 1, mert a FEMPy Triangle3 és Quad4 elemeket old meg.
+        order: ``1`` lineáris Triangle3/Quad4, ``2`` kvadratikus Triangle6
+            hálóhoz. Másodrendű négyszög jelenleg nem támogatott.
         algorithm: Gmsh 2D algoritmuskód; a 6-os a robusztus Frontal-Delaunay.
         optimize: Kérjen-e Gmsh hálóminőség-javítást.
         terminal_output: Jelenjenek-e meg a Gmsh üzenetei a terminálban.
@@ -45,8 +46,10 @@ class GmshMesher:
             raise ValueError("element_size must be positive and finite")
         if self.element_shape not in ("triangle", "quad"):
             raise ValueError("element_shape must be 'triangle' or 'quad'")
-        if self.order != 1:
-            raise ValueError("FEMPy currently supports first-order Gmsh elements only")
+        if self.order not in (1, 2):
+            raise ValueError("Gmsh element order must be 1 or 2")
+        if self.order == 2 and self.element_shape != "triangle":
+            raise ValueError("second-order Gmsh meshing currently supports triangles only")
 
     def generate(self, geometry: Geometry2D) -> Mesh:
         """Behálózza a geometriát és megőrzi annak elnevezett peremeit."""
@@ -64,6 +67,8 @@ class GmshMesher:
             surface_tag, curve_groups = self._build_geometry(gmsh, geometry)
             self._configure(gmsh, surface_tag)
             gmsh.model.mesh.generate(2)
+            if self.order == 2:
+                gmsh.model.mesh.setOrder(2)
             if self.optimize:
                 gmsh.model.mesh.optimize()
             return self._read_mesh(gmsh, surface_tag, curve_groups)
@@ -135,9 +140,11 @@ class GmshMesher:
         for element_type, flat_tags in zip(element_types, element_node_tags, strict=True):
             element_type = int(element_type)
             if element_type == 2:
-                shape, width = "triangle", 3
+                shape, width = "triangle3", 3
+            elif element_type == 9:
+                shape, width = "triangle6", 6
             elif element_type == 3:
-                shape, width = "quad", 4
+                shape, width = "quad4", 4
             else:
                 raise ValueError(f"unsupported Gmsh 2D element type: {element_type}")
             rows = np.asarray(flat_tags, dtype=np.int64).reshape((-1, width))
@@ -151,39 +158,56 @@ class GmshMesher:
         elements = []
         for shape, tags in raw_elements:
             indices = tuple(index_of[tag] for tag in tags)
-            indices = _positive_orientation(indices, nodes)
-            elements.append(Triangle3(indices) if shape == "triangle" else Quad4(indices))
+            indices = _positive_orientation(indices, nodes, shape)
+            element_type = {"triangle3": Triangle3, "triangle6": Triangle6, "quad4": Quad4}[shape]
+            elements.append(element_type(indices))
 
         node_sets: dict[str, list[int]] = {}
-        edge_sets: dict[str, list[tuple[int, int]]] = {}
+        edge_sets: dict[str, list[tuple[int, ...]]] = {}
         for name, tags in curve_groups.items():
             boundary_node_tags: set[int] = set()
-            boundary_edges: list[tuple[int, int]] = []
+            boundary_edges: list[tuple[int, ...]] = []
             for curve_tag in tags:
                 types, _, connectivity = gmsh.model.mesh.getElements(1, curve_tag)
                 for element_type, flat_tags in zip(types, connectivity, strict=True):
-                    if int(element_type) != 1:
+                    element_type = int(element_type)
+                    if element_type == 1:
+                        width = 2
+                    elif element_type == 8:
+                        width = 3
+                    else:
                         raise ValueError(f"unsupported Gmsh boundary element type: {element_type}")
-                    rows = np.asarray(flat_tags, dtype=np.int64).reshape((-1, 2))
-                    for first, second in rows:
-                        a, b = int(first), int(second)
-                        boundary_node_tags.update((a, b))
-                        if a in index_of and b in index_of:
-                            boundary_edges.append((index_of[a], index_of[b]))
+                    rows = np.asarray(flat_tags, dtype=np.int64).reshape((-1, width))
+                    for row in rows:
+                        tags_on_edge = tuple(map(int, row))
+                        if width == 2:
+                            ordered_tags = tags_on_edge
+                        else:
+                            # A Gmsh Line3 sorrendje (első, utolsó, középső).
+                            ordered_tags = (tags_on_edge[0], tags_on_edge[2], tags_on_edge[1])
+                        boundary_node_tags.update(ordered_tags)
+                        if all(tag in index_of for tag in ordered_tags):
+                            boundary_edges.append(tuple(index_of[tag] for tag in ordered_tags))
             node_sets[name] = [index_of[tag] for tag in boundary_node_tags if tag in index_of]
             edge_sets[name] = boundary_edges
         return Mesh(nodes, elements, node_sets=node_sets, edge_sets=edge_sets)
 
 
-def _positive_orientation(indices: tuple[int, ...], nodes: np.ndarray) -> tuple[int, ...]:
+def _positive_orientation(
+    indices: tuple[int, ...], nodes: np.ndarray, shape: str
+) -> tuple[int, ...]:
     """Megfordítja az óramutató járása szerinti Gmsh-kapcsolatot."""
 
-    polygon = nodes[list(indices)]
+    corner_count = 4 if shape == "quad4" else 3
+    polygon = nodes[list(indices[:corner_count])]
     signed_twice_area = np.sum(
         polygon[:, 0] * np.roll(polygon[:, 1], -1) - polygon[:, 1] * np.roll(polygon[:, 0], -1)
     )
     if signed_twice_area > 0.0:
         return indices
+    if shape == "triangle6":
+        # (1,2,3,12,23,31) -> (1,3,2,31,23,12)
+        return (indices[0], indices[2], indices[1], indices[5], indices[4], indices[3])
     return (indices[0], *reversed(indices[1:]))
 
 

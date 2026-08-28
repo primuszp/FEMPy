@@ -9,7 +9,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from fempy import SolverOptions, load_myfem, plot_sparse_matrix
+from fempy import PlotStyle, SolverOptions, load_myfem, plot_sparse_matrix
 from fempy.solver import sparse_memory_bytes
 
 sample = Path(__file__).with_name("femaster_samples") / "plhole.fem"
@@ -28,6 +28,7 @@ result = model.solve(
         max_iterations=50_000,
     )
 )
+style = PlotStyle(language="en")
 
 figure, axes = plt.subplot_mosaic(
     [["full", "reduced"], ["result", "information"]],
@@ -48,6 +49,7 @@ plot_sparse_matrix(
     kind="sparsity",
     title="Full stiffness matrix K",
     ax=axes["full"],
+    style=style,
 )
 # A magnitude nézet a nemnulla együtthatók nagyságrendjét színezi.
 plot_sparse_matrix(
@@ -55,15 +57,14 @@ plot_sparse_matrix(
     kind="magnitude",
     title="Reduced stiffness matrix Kff",
     ax=axes["reduced"],
+    style=style,
 )
 result.plot(
     scale=result.suggested_deformation_scale(),
     field="nodal_von_mises",
-    cmap="turbo",
     ax=axes["result"],
+    style=style,
 )
-axes["result"].set_title("Solved model — nodal von Mises stress")
-
 # Elméleti összehasonlítás: float64 sűrű N×N tömb kontra a CSR három tömbje.
 dense_bytes = full_matrix.shape[0] ** 2 * 8
 csr_bytes = sparse_memory_bytes(full_matrix)
