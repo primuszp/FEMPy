@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fempy-edu"
+version = "1.0.0"
+description = "Readable, validated and sparse 2D finite element library for Python"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Primusz Peter" }]
+keywords = ["finite-element", "fem", "engineering", "gmsh", "education"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+gmsh = ["gmsh>=4.11"]
+dev = ["build>=1.2", "pytest>=8", "ruff>=0.9"]
+
+[project.urls]
+Homepage = "https://github.com/primuszp/FEMPy"
+Documentation = "https://github.com/primuszp/FEMPy/tree/main/docs"
+Issues = "https://github.com/primuszp/FEMPy/issues"
+Source = "https://github.com/primuszp/FEMPy"
+
+[tool.setuptools.packages.find]
+include = ["fempy*"]
+
+[tool.setuptools.package-data]
+fempy = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003", "RUF005"]
