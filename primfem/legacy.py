@@ -19,20 +19,24 @@ from .model import Model
 def _section(lines: list[str], marker: str) -> int:
     """Egy pontos, kis/nagybetű-független komment-szakaszcímet keres."""
     for index, line in enumerate(lines):
-        normalized = line.strip().lstrip("#%- ").strip().lower()
-        if normalized == marker.lower():
+        if _normalized_marker(line) == marker.lower():
             return index
     raise ValueError(f"missing section marker: {marker}")
 
 
 def _section_any(lines: list[str], *markers: str) -> int:
     """Több történelmileg használt szakasznév közül megkeresi az elsőt."""
-    for marker in markers:
-        try:
-            return _section(lines, marker)
-        except ValueError:
-            pass
+    expected = {marker.lower() for marker in markers}
+    for index, line in enumerate(lines):
+        if _normalized_marker(line) in expected:
+            return index
     raise ValueError(f"missing section marker; expected one of: {', '.join(markers)}")
+
+
+def _normalized_marker(line: str) -> str:
+    """Az örökölt formátumok kommentjeleit leválasztja a szakasznévről."""
+
+    return line.strip().lstrip("#%- ").strip().lower()
 
 
 def _values(lines: list[str], start: int, end: int, comment: str) -> list[str]:

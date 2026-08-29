@@ -20,12 +20,11 @@ steel = LinearElasticMaterial(young_modulus=210_000.0, poisson_ratio=0.3, name="
 # A lemez 5 mm vastag. Az alapértelmezett feltételezés plane stress.
 model = Model(mesh, steel, thickness=5.0, condition=PlaneCondition.STRESS, name="cantilever")
 
-# A bal perem minden x és y szabadságfokát rögzítjük.
-model.fix_nodes(mesh.nodes_where(x=0.0))
+# A strukturált háló automatikusan elnevezi mind a négy peremet.
+model.fix_boundary("left")
 
-# A -1000 N eredő erőt egyenletesen osztjuk szét a jobb perem csomópontjain.
-right_edge = mesh.nodes_where(x=200.0)
-model.add_nodal_loads(right_edge, fy=-1_000.0 / len(right_edge))
+# A teljes eredőt adjuk meg; az API hálófüggetlenül, konzisztensen osztja el.
+model.add_boundary_force("right", fy=-1_000.0)
 
 # A solve csak a redukált ritka Kff mátrixot építi fel.
 result = model.solve()

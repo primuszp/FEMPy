@@ -195,6 +195,27 @@ class ModelTests(unittest.TestCase):
         self.assertTrue(np.allclose(model.prescribed_displacements[[2, 3], 0], 0.1))
         self.assertAlmostEqual(model.force_vector[1::2].sum(), -24.0)
 
+    def test_total_boundary_force_is_mesh_independent(self):
+        expected = np.array([125.0, -40.0])
+        for divisions in (1, 8):
+            mesh = rectangular_quad_mesh(divisions, 3, 4.0, 2.0)
+            model = Model(mesh, LinearElasticMaterial(1000.0, 0.3), thickness=5.0)
+            model.add_boundary_force("right", fx=expected[0], fy=expected[1])
+            resultant = model.force_vector.reshape((-1, 2)).sum(axis=0)
+            self.assertTrue(np.allclose(resultant, expected, atol=1e-12))
+            self.assertAlmostEqual(mesh.boundary_length("right"), 2.0, places=12)
+
+    def test_load_case_uses_the_complete_model_api_without_forwarders(self):
+        mesh = rectangular_quad_mesh(2, 1, 2.0, 1.0)
+        model = Model(mesh, LinearElasticMaterial(1000.0, 0.3))
+        case = model.load_case("service", inherit=False)
+        case.fix_nodes(node for node in mesh.nodes_where(x=0.0))
+        case.add_boundary_force("right", fy=-10.0)
+
+        self.assertIsInstance(case, Model)
+        self.assertAlmostEqual(case.force_vector[1::2].sum(), -10.0)
+        self.assertEqual(case.solve().model.name, "service")
+
     def test_non_finite_model_inputs_are_rejected(self):
         mesh = rectangular_quad_mesh(1, 1, 1.0, 1.0)
         material = LinearElasticMaterial(1000.0, 0.3)

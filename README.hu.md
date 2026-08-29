@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/primuszp/PrimFEM/actions/workflows/ci.yml/badge.svg)](https://github.com/primuszp/PrimFEM/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-1.2.0-2E86C1.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-1.3.0-2E86C1.svg)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-27AE60.svg)](LICENSE)
 
 Olvasható, validált és memóriahatékony kétdimenziós végeselemes könyvtár
@@ -52,7 +52,7 @@ futtatható példákat.
 | Háló | strukturált T3/T6/Q4, modern Gmsh T3/T6/Q4 |
 | Geometria | téglalap, sokszög, kör, körív, lyukak, helyi finomítás |
 | Peremfeltétel | fix vagy előírt `ux`/`uy`, név szerinti teljes perem |
-| Terhelés | csomóponti erő, traction, normális nyomás, testgyorsulás |
+| Terhelés | csomóponti erő, teljes peremerő, traction, normális nyomás, testgyorsulás |
 | Terhelésvizsgálat | névvel ellátott független esetek, csoportos megoldás, faktorizáció-újrahasználat |
 | Mátrixtárolás | ritka COO-összeállítás, CSR-rendszer, redukált kötött mátrix |
 | Solver | ritka direkt, Jacobi-előkondicionált CG, újrahasználható LU-faktorizáció |
@@ -118,9 +118,8 @@ steel = LinearElasticMaterial(
 model = Model(mesh, steel, thickness=5.0, name="Quad4 konzol")
 
 # 4. Bal oldali befogás és összesen 1000 N függőleges csúcsterhelés
-model.fix_nodes(mesh.nodes_where(x=0.0))
-right_nodes = mesh.nodes_where(x=200.0)
-model.add_nodal_loads(right_nodes, fy=-1_000.0 / len(right_nodes))
+model.fix_boundary("left")
+model.add_boundary_force("right", fy=-1_000.0)
 
 # 5. Ritka megoldás és kiértékelés
 result = model.solve()
@@ -145,14 +144,13 @@ direkt megoldásnál pedig egyetlen ritka LU-faktorizációt használnak.
 
 ```python
 model = Model(mesh, steel, thickness=5.0, name="konzol terhelési esetek")
-model.fix_nodes(mesh.nodes_where(x=0.0))
-right_nodes = mesh.nodes_where(x=200.0)
+model.fix_boundary("left")
 
 vertical = model.load_case("függőleges")
-vertical.add_nodal_loads(right_nodes, fy=-1_000.0 / len(right_nodes))
+vertical.add_boundary_force("right", fy=-1_000.0)
 
 horizontal = model.load_case("vízszintes")
-horizontal.add_nodal_loads(right_nodes, fx=1_000.0 / len(right_nodes))
+horizontal.add_boundary_force("right", fx=1_000.0)
 
 results = model.solve_cases((vertical, horizontal), reuse_factorization=True)
 
@@ -237,8 +235,10 @@ t6_mesh = to_quadratic_tri_mesh(triangle3_mesh)
 
 ## Peremfeltételek és terhek
 
-Névvel ellátott Gmsh-peremeken a hálófinomítás nem változtatja meg a modell
-definícióját.
+A strukturált téglalaphálók és a Gmsh-hálók egyaránt névvel ellátott
+peremeket adnak, ezért a modell független a csomópontszámozástól és a
+hálófinomítástól. A téglalaphálók automatikus nevei: `bottom`, `right`,
+`top`, `left`.
 
 ```python
 # Egy csomópont vagy csomópontlista
@@ -253,13 +253,16 @@ model.prescribe_boundary("right", ux=0.05)
 
 # Erők és gyorsulás
 model.add_nodal_load(node=10, fx=100.0, fy=-50.0)
+model.add_boundary_force("right", fy=-1_000.0)  # teljes eredő [erő]
 model.add_boundary_traction("right", tx=2.0, ty=-1.0)
 model.add_boundary_pressure("hole", pressure=10.0)  # pozitív: a testbe mutat
 model.set_body_acceleration(ay=-9.81)
 ```
 
-A traction és a nyomás erő/felület dimenziójú; a modell vastagsága az
-integrálás része. Testgyorsuláshoz az anyag `density` értékét is meg kell adni.
+Az `add_boundary_force()` teljes eredőt fogad és a perem hálósűrűségétől
+függetlenül, konzisztensen osztja el. A traction és a nyomás erő/felület
+dimenziójú; a modell vastagsága az integrálás része. Testgyorsuláshoz az
+anyag `density` értékét is meg kell adni.
 
 Peremek és peremfeltételek ellenőrzése:
 
@@ -267,6 +270,7 @@ Peremek és peremfeltételek ellenőrzése:
 print(mesh.boundary_names)
 left_nodes = mesh.boundary_nodes("left")
 hole_edges = mesh.boundary_edges("hole")
+right_length = mesh.boundary_length("right")
 
 mesh.plot_boundaries(names=["left", "hole"], style=style)
 model.plot_boundary_conditions(style=style)
@@ -485,6 +489,7 @@ induló indexeire alakítják. Az új számítás már a ritka megoldót haszná
 ## Projektstruktúra
 
 - `primfem/elements.py`: alakfüggvények, `B` mátrix, merevség és tömeg;
+- `primfem/boundary.py`: közös lineáris és kvadratikus peremintegrálás;
 - `primfem/model.py`: ritka összeállítás, peremfeltételek és megoldás;
 - `primfem/plotting.py`: lokalizált tudományos vizualizáció;
 - `examples/`: futtatható hálózási, elemzési, ábrázolási és validációs példák;

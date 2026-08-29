@@ -134,63 +134,73 @@ class GmshMesher:
         node_tags, coordinates, _ = gmsh.model.mesh.getNodes()
         xyz = np.asarray(coordinates, dtype=float).reshape((-1, 3))
         coordinate_by_tag = {int(tag): xyz[index, :2] for index, tag in enumerate(node_tags)}
-
-        element_types, _, element_node_tags = gmsh.model.mesh.getElements(2, surface_tag)
-        raw_elements: list[tuple[str, tuple[int, ...]]] = []
-        for element_type, flat_tags in zip(element_types, element_node_tags, strict=True):
-            element_type = int(element_type)
-            if element_type == 2:
-                shape, width = "triangle3", 3
-            elif element_type == 9:
-                shape, width = "triangle6", 6
-            elif element_type == 3:
-                shape, width = "quad4", 4
-            else:
-                raise ValueError(f"unsupported Gmsh 2D element type: {element_type}")
-            rows = np.asarray(flat_tags, dtype=np.int64).reshape((-1, width))
-            raw_elements.extend((shape, tuple(map(int, row))) for row in rows)
-        if not raw_elements:
-            raise ValueError("Gmsh did not generate any supported 2D elements")
-
+        raw_elements = _read_area_elements(gmsh, surface_tag)
         used_tags = sorted({tag for _, tags in raw_elements for tag in tags})
         index_of = {tag: index for index, tag in enumerate(used_tags)}
         nodes = np.asarray([coordinate_by_tag[tag] for tag in used_tags])
-        elements = []
-        for shape, tags in raw_elements:
-            indices = tuple(index_of[tag] for tag in tags)
-            indices = _positive_orientation(indices, nodes, shape)
-            element_type = {"triangle3": Triangle3, "triangle6": Triangle6, "quad4": Quad4}[shape]
-            elements.append(element_type(indices))
+        elements = _compact_elements(raw_elements, index_of, nodes)
 
         node_sets: dict[str, list[int]] = {}
         edge_sets: dict[str, list[tuple[int, ...]]] = {}
         for name, tags in curve_groups.items():
-            boundary_node_tags: set[int] = set()
-            boundary_edges: list[tuple[int, ...]] = []
-            for curve_tag in tags:
-                types, _, connectivity = gmsh.model.mesh.getElements(1, curve_tag)
-                for element_type, flat_tags in zip(types, connectivity, strict=True):
-                    element_type = int(element_type)
-                    if element_type == 1:
-                        width = 2
-                    elif element_type == 8:
-                        width = 3
-                    else:
-                        raise ValueError(f"unsupported Gmsh boundary element type: {element_type}")
-                    rows = np.asarray(flat_tags, dtype=np.int64).reshape((-1, width))
-                    for row in rows:
-                        tags_on_edge = tuple(map(int, row))
-                        if width == 2:
-                            ordered_tags = tags_on_edge
-                        else:
-                            # A Gmsh Line3 sorrendje (első, utolsó, középső).
-                            ordered_tags = (tags_on_edge[0], tags_on_edge[2], tags_on_edge[1])
-                        boundary_node_tags.update(ordered_tags)
-                        if all(tag in index_of for tag in ordered_tags):
-                            boundary_edges.append(tuple(index_of[tag] for tag in ordered_tags))
+            boundary_node_tags, boundary_edges = _read_boundary_group(gmsh, tags, index_of)
             node_sets[name] = [index_of[tag] for tag in boundary_node_tags if tag in index_of]
             edge_sets[name] = boundary_edges
         return Mesh(nodes, elements, node_sets=node_sets, edge_sets=edge_sets)
+
+
+def _read_area_elements(gmsh: Any, surface_tag: int) -> list[tuple[str, tuple[int, ...]]]:
+    """A támogatott Gmsh területi elemblokkokat egységes rekordokká alakítja."""
+
+    definitions = {2: ("triangle3", 3), 9: ("triangle6", 6), 3: ("quad4", 4)}
+    element_types, _, element_node_tags = gmsh.model.mesh.getElements(2, surface_tag)
+    raw_elements: list[tuple[str, tuple[int, ...]]] = []
+    for raw_type, flat_tags in zip(element_types, element_node_tags, strict=True):
+        element_type = int(raw_type)
+        if element_type not in definitions:
+            raise ValueError(f"unsupported Gmsh 2D element type: {element_type}")
+        shape, width = definitions[element_type]
+        rows = np.asarray(flat_tags, dtype=np.int64).reshape((-1, width))
+        raw_elements.extend((shape, tuple(map(int, row))) for row in rows)
+    if not raw_elements:
+        raise ValueError("Gmsh did not generate any supported 2D elements")
+    return raw_elements
+
+
+def _compact_elements(raw_elements, index_of, nodes):
+    """A Gmsh-címkéket belső indexekké és ellenőrzött elemekké alakítja."""
+
+    element_classes = {"triangle3": Triangle3, "triangle6": Triangle6, "quad4": Quad4}
+    elements = []
+    for shape, tags in raw_elements:
+        indices = tuple(index_of[tag] for tag in tags)
+        indices = _positive_orientation(indices, nodes, shape)
+        elements.append(element_classes[shape](indices))
+    return elements
+
+
+def _read_boundary_group(gmsh: Any, curve_tags, index_of):
+    """Egy fizikai görbecsoport lineáris vagy kvadratikus éleit olvassa."""
+
+    widths = {1: 2, 8: 3}
+    boundary_node_tags: set[int] = set()
+    boundary_edges: list[tuple[int, ...]] = []
+    for curve_tag in curve_tags:
+        types, _, connectivity = gmsh.model.mesh.getElements(1, curve_tag)
+        for raw_type, flat_tags in zip(types, connectivity, strict=True):
+            element_type = int(raw_type)
+            if element_type not in widths:
+                raise ValueError(f"unsupported Gmsh boundary element type: {element_type}")
+            width = widths[element_type]
+            rows = np.asarray(flat_tags, dtype=np.int64).reshape((-1, width))
+            for row in rows:
+                tags = tuple(map(int, row))
+                # A Gmsh Line3 sorrendje: első, utolsó, középső.
+                ordered = tags if width == 2 else (tags[0], tags[2], tags[1])
+                boundary_node_tags.update(ordered)
+                if all(tag in index_of for tag in ordered):
+                    boundary_edges.append(tuple(index_of[tag] for tag in ordered))
+    return boundary_node_tags, boundary_edges
 
 
 def _positive_orientation(

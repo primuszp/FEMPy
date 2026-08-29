@@ -11,14 +11,13 @@ model = Model(
 )
 
 # A közös támasz minden később létrehozott esetbe bekerül.
-model.fix_nodes(mesh.nodes_where(x=0.0))
-right = mesh.nodes_where(x=300.0)
+model.fix_boundary("left")
 
 vertical = model.load_case("vertical")
-vertical.add_nodal_loads(right, fy=-1000.0 / len(right))
+vertical.add_boundary_force("right", fy=-1000.0)
 
 horizontal = model.load_case("horizontal")
-horizontal.add_nodal_loads(right, fx=1000.0 / len(right))
+horizontal.add_boundary_force("right", fx=1000.0)
 
 results = model.solve_cases((vertical, horizontal), reuse_factorization=True)
 for name, result in results.items():

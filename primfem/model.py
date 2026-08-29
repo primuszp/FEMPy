@@ -16,14 +16,15 @@ merevségi mátrix csak a ``stiffness_matrix()`` explicit kérésére épül fel
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.sparse import coo_matrix, csr_matrix
 
-from .elements import Triangle6
-from .loadcase import LoadCase
+from .boundary import edge_quadrature, element_boundary_edges
+from .elements import Element2D
 from .material import LinearElasticMaterial, PlaneCondition
 from .mesh import Mesh
 from .result import (
@@ -42,48 +43,14 @@ from .solver import (
     solve_sparse_system,
 )
 
-
-def _element_boundary_edges(element) -> tuple[tuple[int, ...], ...]:
-    """Az elem topológiai oldalai, T6 esetén a középcsomóponttal."""
-
-    ids = element.node_ids
-    if isinstance(element, Triangle6):
-        return (
-            (ids[0], ids[3], ids[1]),
-            (ids[1], ids[4], ids[2]),
-            (ids[2], ids[5], ids[0]),
-        )
-    return tuple((ids[index], ids[(index + 1) % len(ids)]) for index in range(len(ids)))
+if TYPE_CHECKING:
+    from .loadcase import LoadCase
 
 
-def _edge_quadrature(edge: tuple[int, ...], nodes: np.ndarray):
-    """Lineáris vagy kvadratikus él Gauss-pontjait és alakfüggvényeit adja.
+def _element_dofs(node_ids: np.ndarray) -> np.ndarray:
+    """Csomópontindexekből az egymásba fűzött ``ux, uy`` indexek."""
 
-    Minden rekord ``(hely, érintő, alakfüggvény, súly)``. A hárompontos
-    Gauss-szabály a T6 él menti konzisztens terhelését és görbült geometriáját
-    is megfelelő rendben integrálja.
-    """
-
-    coordinates = nodes[list(edge)]
-    if len(edge) == 2:
-        points = ((0.0, 2.0),)
-    else:
-        gauss = np.sqrt(3.0 / 5.0)
-        points = ((-gauss, 5.0 / 9.0), (0.0, 8.0 / 9.0), (gauss, 5.0 / 9.0))
-    for coordinate, weight in points:
-        if len(edge) == 2:
-            shape = np.array((0.5 * (1.0 - coordinate), 0.5 * (1.0 + coordinate)))
-            derivative = np.array((-0.5, 0.5))
-        else:
-            shape = np.array(
-                (
-                    0.5 * coordinate * (coordinate - 1.0),
-                    1.0 - coordinate**2,
-                    0.5 * coordinate * (coordinate + 1.0),
-                )
-            )
-            derivative = np.array((coordinate - 0.5, -2.0 * coordinate, coordinate + 0.5))
-        yield shape @ coordinates, derivative @ coordinates, shape, weight
+    return np.column_stack((2 * node_ids, 2 * node_ids + 1)).ravel()
 
 
 @dataclass(slots=True)
@@ -133,7 +100,13 @@ class Model:
         self._loads[2 * node : 2 * node + 2] += (fx, fy)
         return self
 
-    def add_nodal_loads(self, nodes: list[int], *, fx: float = 0.0, fy: float = 0.0) -> Model:
+    def add_nodal_loads(
+        self,
+        nodes: Iterable[int],
+        *,
+        fx: float = 0.0,
+        fy: float = 0.0,
+    ) -> Model:
         """Ugyanazt az erővektort több csomóponthoz adja.
 
         Fontos: ``fx`` és ``fy`` csomópontonkénti erő. Egy ``F`` eredő terhet
@@ -181,7 +154,7 @@ class Model:
 
         return self.prescribe(node, ux=0.0 if x else None, uy=0.0 if y else None)
 
-    def fix_nodes(self, nodes: list[int], *, x: bool = True, y: bool = True) -> Model:
+    def fix_nodes(self, nodes: Iterable[int], *, x: bool = True, y: bool = True) -> Model:
         """Több csomópont kiválasztott irányait egyszerre rögzíti."""
 
         for node in nodes:
@@ -236,7 +209,7 @@ class Model:
             raise ValueError(f"boundary {name!r} has no edges")
         traction = np.asarray([tx, ty], dtype=float)
         for edge in edges:
-            for _point, tangent, shape, weight in _edge_quadrature(edge, self.mesh.nodes):
+            for _point, tangent, shape, weight in edge_quadrature(edge, self.mesh.nodes):
                 jacobian = float(np.linalg.norm(tangent))
                 if jacobian <= np.finfo(float).eps:
                     raise ValueError(f"boundary {name!r} contains a degenerate edge")
@@ -245,6 +218,23 @@ class Model:
                         traction * self.thickness * shape_value * jacobian * weight
                     )
         return self
+
+    def add_boundary_force(self, name: str, *, fx: float = 0.0, fy: float = 0.0) -> Model:
+        """Teljes eredő erőt oszt el konzisztensen egy elnevezett peremen.
+
+        Az ``fx`` és ``fy`` a teljes peremre ható eredő erő komponensei,
+        nem csomópontonkénti értékek. A metódus a perem hosszából és a
+        modell vastagságából képezi az egyenletes traction értéket, majd a
+        meglévő konzisztens élintegrálást használja. Emiatt az eredő nem
+        változik a perem hálójának finomításakor.
+        """
+
+        if not np.isfinite(fx) or not np.isfinite(fy):
+            raise ValueError("boundary force components must be finite")
+        loaded_area = self.mesh.boundary_length(name) * self.thickness
+        if loaded_area <= np.finfo(float).eps:
+            raise ValueError(f"boundary {name!r} has zero loaded area")
+        return self.add_boundary_traction(name, tx=fx / loaded_area, ty=fy / loaded_area)
 
     def add_boundary_pressure(self, name: str, pressure: float) -> Model:
         """Peremre merőleges, pozitív értéknél befelé ható nyomást ad meg.
@@ -258,7 +248,7 @@ class Model:
             raise ValueError("pressure must be finite")
         adjacent_elements: dict[tuple[int, int], list] = {}
         for element in self.mesh.elements:
-            for edge in _element_boundary_edges(element):
+            for edge in element_boundary_edges(element):
                 key = tuple(sorted((edge[0], edge[-1])))
                 adjacent_elements.setdefault(key, []).append(element)
         for edge in self.mesh.boundary_edges(name):
@@ -266,7 +256,7 @@ class Model:
             if len(adjacent) != 1:
                 raise ValueError(f"boundary edge {edge} must have exactly one adjacent element")
             centroid = self.mesh.nodes[list(adjacent[0].node_ids)].mean(axis=0)
-            for point, tangent, shape, weight in _edge_quadrature(edge, self.mesh.nodes):
+            for point, tangent, shape, weight in edge_quadrature(edge, self.mesh.nodes):
                 jacobian = float(np.linalg.norm(tangent))
                 if jacobian <= np.finfo(float).eps:
                     raise ValueError(f"boundary {name!r} contains a degenerate edge")
@@ -336,6 +326,8 @@ class Model:
         közös megoldásához a :meth:`solve_cases` metódus használható.
         """
 
+        from .loadcase import LoadCase
+
         return LoadCase(self, name, inherit=inherit)
 
     def solve_cases(
@@ -356,6 +348,46 @@ class Model:
             A bemeneti sorrendet megtartó ``{case_name: AnalysisResult}`` szótár.
         """
 
+        case_list, groups = self._group_load_cases(cases)
+        options = self._solver_options(solver)
+
+        solved: dict[str, AnalysisResult] = {}
+        for group in groups:
+            first = group[0]
+            _, free, free_map, _ = first._dof_partition()
+            matrix = first._assemble_reduced_stiffness(free, free_map)
+            method = selected_solver_method(options, len(free))
+            factorization = None
+            if len(free) and reuse_factorization and method is SolverMethod.DIRECT:
+                factorization = SparseDirectFactorization(matrix)
+
+            for index, case in enumerate(group):
+                _, case_free, case_free_map, prescribed = case._dof_partition()
+                # A csoportosítás miatt ezek értéke azonos; az ellenőrzés a
+                # későbbi refaktorálások ellen is védi a faktorizációt.
+                if not np.array_equal(case_free, free) or not np.array_equal(
+                    case_free_map, free_map
+                ):
+                    raise RuntimeError("incompatible load cases were grouped together")
+                solved[case.name] = case._solve_reduced(
+                    matrix,
+                    free,
+                    free_map,
+                    prescribed,
+                    options,
+                    factorization=factorization,
+                    factorization_reused=index > 0,
+                )
+        return {case.name: solved[case.name] for case in case_list}
+
+    def _group_load_cases(
+        self,
+        cases: Iterable[LoadCase],
+    ) -> tuple[tuple[LoadCase, ...], tuple[list[LoadCase], ...]]:
+        """Ellenőrzi és a kötött szabadságfokok szerint csoportosítja az eseteket."""
+
+        from .loadcase import LoadCase
+
         case_list = tuple(cases)
         if not case_list:
             raise ValueError("at least one load case is required")
@@ -366,57 +398,13 @@ class Model:
         names = [case.name for case in case_list]
         if len(set(names)) != len(names):
             raise ValueError("load-case names must be unique")
-        options = self._solver_options(solver)
 
-        groups: dict[tuple[int, ...], list[LoadCase]] = {}
+        grouped: dict[tuple[int, ...], list[LoadCase]] = {}
         for case in case_list:
-            definition = case._definition
-            if not definition._prescribed:
+            if not case._prescribed:
                 raise ValueError(f"load case {case.name!r} has no displacement boundary conditions")
-            signature = tuple(sorted(definition._prescribed))
-            groups.setdefault(signature, []).append(case)
-
-        solved: dict[str, AnalysisResult] = {}
-        for group in groups.values():
-            first = group[0]._definition
-            _, free, free_map, _ = first._dof_partition()
-            matrix = first._assemble_reduced_stiffness(free, free_map)
-            method = selected_solver_method(options, len(free))
-            factorization = None
-            if len(free) and reuse_factorization and method is SolverMethod.DIRECT:
-                factorization = SparseDirectFactorization(matrix)
-
-            for index, case in enumerate(group):
-                definition = case._definition
-                _, case_free, case_free_map, prescribed = definition._dof_partition()
-                # A csoportosítás miatt ezek értéke azonos; az ellenőrzés a
-                # későbbi refaktorálások ellen is védi a faktorizációt.
-                if not np.array_equal(case_free, free) or not np.array_equal(
-                    case_free_map, free_map
-                ):
-                    raise RuntimeError("incompatible load cases were grouped together")
-                forces = definition._loads + definition._body_force_vector()
-                right_hand_side = definition._assemble_reduced_force(
-                    forces, free, free_map, prescribed
-                )
-                displacement = prescribed.copy()
-                if len(free):
-                    if factorization is not None:
-                        displacement[free], solver_info = solve_factorized_system(
-                            matrix,
-                            right_hand_side,
-                            factorization,
-                            reused=index > 0,
-                        )
-                    else:
-                        displacement[free], solver_info = solve_sparse_system(
-                            matrix, right_hand_side, options
-                        )
-                else:
-                    solver_info = definition._empty_solver_info(options)
-                reaction = definition._internal_force_vector(displacement) - forces
-                solved[case.name] = definition._recover_results(displacement, reaction, solver_info)
-        return {case.name: solved[case.name] for case in case_list}
+            grouped.setdefault(tuple(sorted(case._prescribed)), []).append(case)
+        return case_list, tuple(grouped.values())
 
     def solve(self, solver: SolverOptions | SolverMethod | str | None = None) -> AnalysisResult:
         """Összeállítja és megoldja a statikai egyenletrendszert.
@@ -442,23 +430,47 @@ class Model:
         # A free_map minden globális szabadságfokhoz megmondja a redukált
         # sorszámot. Kötött szabadságfoknál -1, így nincs szükség szótárakra.
         _, free, free_map, prescribed = self._dof_partition()
-        reduced_stiffness, reduced_force = self._assemble_reduced_system(
-            forces, free, free_map, prescribed
+        reduced_stiffness = self._assemble_reduced_stiffness(free, free_map)
+        return self._solve_reduced(
+            reduced_stiffness,
+            free,
+            free_map,
+            prescribed,
+            options,
+            forces=forces,
         )
-        displacement = prescribed.copy()
-        if len(free):
-            # A ritka solver csak K_ff-et látja. A kényszerített u_c értékek
-            # hatása már az összeállított jobb oldalba került.
-            displacement[free], solver_info = solve_sparse_system(
-                reduced_stiffness, reduced_force, options
-            )
-        else:
-            solver_info = self._empty_solver_info(options)
 
-        # Reakció = belső csomóponti erő - külső erő. A belső erőt újra
-        # elemenként összegezzük, ezért a reakcióhoz sem kell teljes globális K.
-        internal_force = self._internal_force_vector(displacement)
-        reaction = internal_force - forces
+    def _solve_reduced(
+        self,
+        matrix: csr_matrix,
+        free: np.ndarray,
+        free_map: np.ndarray,
+        prescribed: np.ndarray,
+        options: SolverOptions,
+        *,
+        forces: np.ndarray | None = None,
+        factorization: SparseDirectFactorization | None = None,
+        factorization_reused: bool = False,
+    ) -> AnalysisResult:
+        """Egy már összeállított redukált rendszer közös megoldási útja."""
+
+        if forces is None:
+            forces = self._loads + self._body_force_vector()
+        right_hand_side = self._assemble_reduced_force(forces, free, free_map, prescribed)
+        displacement = prescribed.copy()
+        if not len(free):
+            solver_info = self._empty_solver_info(options)
+        elif factorization is None:
+            displacement[free], solver_info = solve_sparse_system(matrix, right_hand_side, options)
+        else:
+            displacement[free], solver_info = solve_factorized_system(
+                matrix,
+                right_hand_side,
+                factorization,
+                reused=factorization_reused,
+            )
+
+        reaction = self._internal_force_vector(displacement) - forces
         return self._recover_results(displacement, reaction, solver_info)
 
     @staticmethod
@@ -572,30 +584,11 @@ class Model:
             return self._assemble_reduced_system(forces, free, free_map, prescribed)[0]
 
         constitutive = self.material.constitutive_matrix(self.condition)
-        # Előre ismert az összes lokális mátrixbejegyzés száma. A fix méretű
-        # NumPy-tömbök jóval kisebbek, mint három, Python-objektumokból álló lista.
-        entry_count = sum((2 * len(element.node_ids)) ** 2 for element in self.mesh.elements)
-        rows = np.empty(entry_count, dtype=np.int64)
-        columns = np.empty(entry_count, dtype=np.int64)
-        values = np.empty(entry_count, dtype=float)
-        cursor = 0
-        for element in self.mesh.elements:
-            node_ids = np.array(element.node_ids)
-            coordinates = self.mesh.nodes[node_ids]
-            element_matrix = element.stiffness(coordinates, constitutive, self.thickness)
-            dofs = np.column_stack((2 * node_ids, 2 * node_ids + 1)).ravel()
-            block_size = len(dofs) ** 2
-            target = slice(cursor, cursor + block_size)
-            rows[target] = np.repeat(dofs, len(dofs))
-            columns[target] = np.tile(dofs, len(dofs))
-            values[target] = element_matrix.ravel()
-            cursor += block_size
-        size = 2 * self.mesh.node_count
-        # A COO formátum jól használható összeállításhoz, a CSR pedig gyors
-        # mátrix-vektor szorzást, szeletelést és ritka megoldást biztosít.
-        matrix = coo_matrix((values, (rows, columns)), shape=(size, size)).tocsr()
-        matrix.eliminate_zeros()
-        return matrix
+        return self._assemble_global_matrix(
+            lambda element, coordinates: element.stiffness(
+                coordinates, constitutive, self.thickness
+            )
+        )
 
     def plot_stiffness_matrix(
         self,
@@ -641,6 +634,22 @@ class Model:
         fel, hanem az elemi ``Me @ acceleration`` vektorokat összegezzük.
         """
 
+        return self._assemble_global_matrix(
+            lambda element, coordinates: element.mass_matrix(
+                coordinates, self.material.density, self.thickness
+            )
+        )
+
+    def _assemble_global_matrix(
+        self,
+        element_matrix: Callable[[Element2D, np.ndarray], np.ndarray],
+    ) -> csr_matrix:
+        """Elemi mátrixokból teljes COO→CSR globális mátrixot épít.
+
+        A merevségi és tömegmátrix ugyanazt a memóriatakarékos scatter
+        algoritmust használja; csak az elemi mátrixot előállító függvény tér el.
+        """
+
         entry_count = sum((2 * len(element.node_ids)) ** 2 for element in self.mesh.elements)
         rows = np.empty(entry_count, dtype=np.int64)
         columns = np.empty(entry_count, dtype=np.int64)
@@ -649,13 +658,13 @@ class Model:
         for element in self.mesh.elements:
             node_ids = np.array(element.node_ids)
             coordinates = self.mesh.nodes[node_ids]
-            element_matrix = element.mass_matrix(coordinates, self.material.density, self.thickness)
-            dofs = np.column_stack((2 * node_ids, 2 * node_ids + 1)).ravel()
+            local_matrix = element_matrix(element, coordinates)
+            dofs = _element_dofs(node_ids)
             block_size = len(dofs) ** 2
             target = slice(cursor, cursor + block_size)
             rows[target] = np.repeat(dofs, len(dofs))
             columns[target] = np.tile(dofs, len(dofs))
-            values[target] = element_matrix.ravel()
+            values[target] = local_matrix.ravel()
             cursor += block_size
         size = 2 * self.mesh.node_count
         matrix = coo_matrix((values, (rows, columns)), shape=(size, size)).tocsr()

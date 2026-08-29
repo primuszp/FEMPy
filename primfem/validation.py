@@ -104,12 +104,14 @@ class ValidationReport:
             "| Feladat | Elem | Legfinomabb eredmény | Referencia | Hiba | Tűrés | Eredmény |",
             "|---|---:|---:|---:|---:|---:|---:|",
         ]
-        for case in self.cases:
-            lines.append(
+        lines.extend(
+            (
                 f"| {case.name} | {case.element} | {case.samples[-1].value:.8g} | "
                 f"{case.reference:.8g} | {100 * case.final_error:.4g}% | "
                 f"{100 * case.tolerance:.4g}% | {'PASS' if case.passed else 'FAIL'} |"
             )
+            for case in self.cases
+        )
         lines.extend(["", "## Konvergenciasorok", ""])
         for case in self.cases:
             lines.extend(
@@ -122,11 +124,13 @@ class ValidationReport:
                     "|---:|---:|---:|---:|",
                 ]
             )
-            for sample in case.samples:
-                lines.append(
+            lines.extend(
+                (
                     f"| {sample.resolution} | {sample.degrees_of_freedom} | "
                     f"{sample.value:.9g} | {100 * sample.relative_error:.6g}% |"
                 )
+                for sample in case.samples
+            )
             lines.append("")
         output.write_text("\n".join(lines), encoding="utf-8")
         return output

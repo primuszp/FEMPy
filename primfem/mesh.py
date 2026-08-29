@@ -9,12 +9,14 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from itertools import pairwise
 from pathlib import Path
 from types import MappingProxyType
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
 
+from .boundary import edge_length
 from .elements import Element2D, Quad4, Triangle3, Triangle6
 
 
@@ -137,6 +139,18 @@ class Mesh:
             )
         return list(self.edge_sets[name])
 
+    def boundary_length(self, name: str) -> float:
+        """Egy elnevezett perem teljes geometriai hosszát adja.
+
+        A T6 kvadratikus éleket Gauss-integrálással méri, ezért görbült
+        peremnél sem a sarokpontok közötti húrhosszat adja vissza.
+        """
+
+        edges = self.boundary_edges(name)
+        if not edges:
+            raise ValueError(f"boundary {name!r} has no edges")
+        return sum(edge_length(edge, self.nodes) for edge in edges)
+
     def plot(self, *, ax=None, show_node_ids: bool = False, style=None):
         """Matplotlib-ábrán megjeleníti a hálót."""
 
@@ -225,6 +239,22 @@ def _validate_edge_sets(
     return checked
 
 
+def _rectangular_boundary_sets(
+    nx: int,
+    ny: int,
+) -> tuple[dict[str, list[int]], dict[str, list[tuple[int, int]]]]:
+    """Strukturált téglalap négy, geometriailag rendezett peremét adja."""
+
+    stride = nx + 1
+    bottom = list(range(stride))
+    right = [row * stride + nx for row in range(ny + 1)]
+    top = [ny * stride + column for column in range(nx, -1, -1)]
+    left = [row * stride for row in range(ny, -1, -1)]
+    node_sets = {"bottom": bottom, "right": right, "top": top, "left": left}
+    edge_sets = {name: list(pairwise(nodes)) for name, nodes in node_sets.items()}
+    return node_sets, edge_sets
+
+
 def rectangular_quad_mesh(
     nx: int,
     ny: int,
@@ -263,7 +293,8 @@ def rectangular_quad_mesh(
                     )
                 )
             )
-    return Mesh(nodes, elements)
+    node_sets, edge_sets = _rectangular_boundary_sets(nx, ny)
+    return Mesh(nodes, elements, node_sets=node_sets, edge_sets=edge_sets)
 
 
 def rectangular_tri_mesh(
@@ -285,7 +316,12 @@ def rectangular_tri_mesh(
     for element in quad_mesh.elements:
         n1, n2, n3, n4 = element.node_ids
         triangles.extend((Triangle3((n1, n2, n3)), Triangle3((n1, n3, n4))))
-    return Mesh(quad_mesh.nodes, triangles)
+    return Mesh(
+        quad_mesh.nodes,
+        triangles,
+        node_sets=quad_mesh.node_sets,
+        edge_sets=quad_mesh.edge_sets,
+    )
 
 
 def to_quadratic_tri_mesh(mesh: Mesh) -> Mesh:

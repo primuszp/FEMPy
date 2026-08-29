@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/primuszp/PrimFEM/actions/workflows/ci.yml/badge.svg)](https://github.com/primuszp/PrimFEM/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-1.2.0-2E86C1.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-1.3.0-2E86C1.svg)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-27AE60.svg)](LICENSE)
 
 A readable, validated, and memory-efficient two-dimensional finite element
@@ -54,7 +54,7 @@ place.
 | Meshes | structured T3/T6/Q4, modern Gmsh T3/T6/Q4 |
 | Geometry | rectangles, polygons, circles, arcs, holes, local refinement |
 | Constraints | fixed or prescribed `ux`/`uy`, complete named boundaries |
-| Loads | nodal force, traction, normal pressure, body acceleration |
+| Loads | nodal force, total boundary force, traction, normal pressure, body acceleration |
 | Load studies | named independent cases, grouped solution, reusable factorization |
 | Matrix storage | sparse COO assembly, CSR systems, reduced constrained matrices |
 | Solvers | sparse direct, Jacobi-preconditioned CG, reusable LU factorization |
@@ -121,9 +121,8 @@ steel = LinearElasticMaterial(
 model = Model(mesh, steel, thickness=5.0, name="Quad4 cantilever")
 
 # 4. Clamp the left edge and apply a total vertical tip load of 1000 N
-model.fix_nodes(mesh.nodes_where(x=0.0))
-right_nodes = mesh.nodes_where(x=200.0)
-model.add_nodal_loads(right_nodes, fy=-1_000.0 / len(right_nodes))
+model.fix_boundary("left")
+model.add_boundary_force("right", fy=-1_000.0)
 
 # 5. Sparse solution and post-processing
 result = model.solve()
@@ -149,14 +148,13 @@ reduced matrix and, with the direct solver, one sparse LU factorization.
 
 ```python
 model = Model(mesh, steel, thickness=5.0, name="cantilever load cases")
-model.fix_nodes(mesh.nodes_where(x=0.0))
-right_nodes = mesh.nodes_where(x=200.0)
+model.fix_boundary("left")
 
 vertical = model.load_case("vertical")
-vertical.add_nodal_loads(right_nodes, fy=-1_000.0 / len(right_nodes))
+vertical.add_boundary_force("right", fy=-1_000.0)
 
 horizontal = model.load_case("horizontal")
-horizontal.add_nodal_loads(right_nodes, fx=1_000.0 / len(right_nodes))
+horizontal.add_boundary_force("right", fx=1_000.0)
 
 results = model.solve_cases((vertical, horizontal), reuse_factorization=True)
 
@@ -241,7 +239,9 @@ t6_mesh = to_quadratic_tri_mesh(triangle3_mesh)
 
 ## Boundary conditions and loads
 
-Named Gmsh boundaries keep model definitions independent of mesh refinement.
+Structured rectangle meshes and Gmsh meshes both carry named boundaries, so
+model definitions stay independent of node numbering and mesh refinement.
+Rectangular meshes provide `bottom`, `right`, `top`, and `left` automatically.
 
 ```python
 # One node or a list of nodes
@@ -256,14 +256,16 @@ model.prescribe_boundary("right", ux=0.05)
 
 # Forces and acceleration
 model.add_nodal_load(node=10, fx=100.0, fy=-50.0)
+model.add_boundary_force("right", fy=-1_000.0)  # total resultant [force]
 model.add_boundary_traction("right", tx=2.0, ty=-1.0)
 model.add_boundary_pressure("hole", pressure=10.0)  # positive points inward
 model.set_body_acceleration(ay=-9.81)
 ```
 
-Traction and pressure have the dimensions of force per area; model thickness
-is included during integration. Body acceleration also requires `density` in
-the material definition.
+`add_boundary_force()` takes a total resultant and distributes it consistently,
+independently of boundary mesh density. Traction and pressure have dimensions
+of force per area; model thickness is included during integration. Body
+acceleration also requires `density` in the material definition.
 
 Inspect named boundaries and constraints before solving:
 
@@ -271,6 +273,7 @@ Inspect named boundaries and constraints before solving:
 print(mesh.boundary_names)
 left_nodes = mesh.boundary_nodes("left")
 hole_edges = mesh.boundary_edges("hole")
+right_length = mesh.boundary_length("right")
 
 mesh.plot_boundaries(names=["left", "hole"], style=style)
 model.plot_boundary_conditions(style=style)
@@ -488,6 +491,7 @@ zero-based indices. The imported analysis then uses the sparse solver.
 ## Project structure
 
 - `primfem/elements.py`: shape functions, `B` matrices, stiffness, and mass;
+- `primfem/boundary.py`: shared linear and quadratic boundary integration;
 - `primfem/model.py`: sparse assembly, boundary conditions, and solution;
 - `primfem/plotting.py`: localized scientific visualization;
 - `examples/`: runnable meshing, analysis, plotting, and validation programs;

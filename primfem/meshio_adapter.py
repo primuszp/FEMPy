@@ -55,19 +55,8 @@ def _positive_element(cell_type: str, node_ids: np.ndarray, points: np.ndarray):
     return Quad4(ids)
 
 
-def read_mesh(path: str | Path):
-    """T3, T6 vagy Q4 kétdimenziós hálót olvas bármely meshio-formátumból."""
-
-    from .mesh import Mesh
-
-    meshio = _meshio()
-    source = meshio.read(Path(path))
-    points = np.asarray(source.points, dtype=float)
-    if points.ndim != 2 or points.shape[1] < 2:
-        raise ValueError("mesh file must contain at least x and y coordinates")
-    if points.shape[1] > 2 and not np.allclose(points[:, 2:], points[0, 2:]):
-        raise ValueError("mesh is not planar; PrimFEM currently supports 2D meshes")
-    points_2d = points[:, :2]
+def _read_cell_blocks(source, points: np.ndarray):
+    """A területi elemeket és a külön kezelt peremblokkokat olvassa ki."""
 
     elements = []
     boundary_blocks: dict[int, list[tuple[int, ...]]] = {}
@@ -75,12 +64,12 @@ def read_mesh(path: str | Path):
     for block_index, block in enumerate(source.cells):
         if block.type in supported_area_types:
             elements.extend(
-                _positive_element(block.type, row, points_2d) for row in np.asarray(block.data)
+                _positive_element(block.type, row, points) for row in np.asarray(block.data)
             )
         elif block.type == "line":
             boundary_blocks[block_index] = [tuple(map(int, row)) for row in block.data]
         elif block.type == "line3":
-            # meshio: (first endpoint, second endpoint, middle node).
+            # meshio: (első végpont, második végpont, középcsomópont).
             boundary_blocks[block_index] = [
                 (int(row[0]), int(row[2]), int(row[1])) for row in block.data
             ]
@@ -88,45 +77,57 @@ def read_mesh(path: str | Path):
             raise ValueError(f"unsupported two-dimensional cell type: {block.type}")
     if not elements:
         raise ValueError("mesh file contains no supported Triangle3, Triangle6 or Quad4 cells")
+    return elements, boundary_blocks
+
+
+def _named_boundary_edges(source, boundary_blocks):
+    """A cell-set, cell-data és Gmsh fizikai neveket egységesíti."""
 
     edge_sets: dict[str, list[tuple[int, ...]]] = defaultdict(list)
     for name, selections in source.cell_sets.items():
         for block_index, selected in enumerate(selections):
-            if block_index not in boundary_blocks or selected is None:
-                continue
-            edges = boundary_blocks[block_index]
-            edge_sets[name].extend(edges[int(index)] for index in np.asarray(selected).ravel())
+            if block_index in boundary_blocks and selected is not None:
+                edges = boundary_blocks[block_index]
+                edge_sets[name].extend(edges[int(index)] for index in np.asarray(selected).ravel())
 
-    # Egyes formátumok (például VTU) a cellahalmazokat -1/0 jelölésű
-    # cellaadattá alakítják. A peremvonal-blokkokon ezt veszteség nélkül
-    # visszafejtjük.
+    # A VTU egyes cellahalmazokat -1/0 jelölésű cellaadattá alakít.
     for name, block_values in source.cell_data.items():
         if name.startswith("gmsh:"):
             continue
         for block_index, values in enumerate(block_values):
-            if block_index not in boundary_blocks:
-                continue
             values = np.asarray(values)
-            if values.ndim != 1 or not np.issubdtype(values.dtype, np.integer):
-                continue
-            selected = np.flatnonzero(values >= 0)
-            edges = boundary_blocks[block_index]
-            edge_sets[name].extend(edges[int(index)] for index in selected)
+            if (
+                block_index in boundary_blocks
+                and values.ndim == 1
+                and np.issubdtype(values.dtype, np.integer)
+            ):
+                edges = boundary_blocks[block_index]
+                edge_sets[name].extend(edges[int(index)] for index in np.flatnonzero(values >= 0))
 
-    # A Gmsh fizikai neveket a meshio ``field_data`` és ``gmsh:physical``
-    # tömbökként őrzi. Ezekből visszaállítjuk az egydimenziós peremhalmazokat.
     physical_data = source.cell_data.get("gmsh:physical")
     if physical_data is not None:
-        for name, definition in source.field_data.items():
-            physical_tag, dimension = map(int, np.asarray(definition).ravel()[:2])
-            if dimension != 1:
-                continue
-            for block_index, tags in enumerate(physical_data):
-                if block_index not in boundary_blocks:
-                    continue
+        _extend_physical_boundaries(edge_sets, source, boundary_blocks, physical_data)
+    return edge_sets
+
+
+def _extend_physical_boundaries(edge_sets, source, boundary_blocks, physical_data) -> None:
+    """A Gmsh egydimenziós fizikai csoportjait név szerinti peremmé alakítja."""
+
+    for name, definition in source.field_data.items():
+        physical_tag, dimension = map(int, np.asarray(definition).ravel()[:2])
+        if dimension != 1:
+            continue
+        for block_index, tags in enumerate(physical_data):
+            if block_index in boundary_blocks:
                 edges = boundary_blocks[block_index]
                 selected = np.flatnonzero(np.asarray(tags) == physical_tag)
                 edge_sets[name].extend(edges[int(index)] for index in selected)
+
+
+def _compact_imported_mesh(points, elements, edge_sets, point_sets, point_data):
+    """Eltávolítja a nem használt pontokat és újraszámozza a halmazokat."""
+
+    from .mesh import Mesh
 
     used = sorted({node for element in elements for node in element.node_ids})
     old_to_new = {old: new for new, old in enumerate(used)}
@@ -143,10 +144,10 @@ def read_mesh(path: str | Path):
     }
     node_sets = {
         name: [old_to_new[int(node)] for node in nodes if int(node) in old_to_new]
-        for name, nodes in source.point_sets.items()
+        for name, nodes in point_sets.items()
     }
-    for name, values in source.point_data.items():
-        values = np.asarray(values)
+    for name, raw_values in point_data.items():
+        values = np.asarray(raw_values)
         if (
             values.ndim == 1
             and np.issubdtype(values.dtype, np.integer)
@@ -160,11 +161,29 @@ def read_mesh(path: str | Path):
             )
     for name, edges in compact_edges.items():
         node_sets.setdefault(name, []).extend(node for edge in edges for node in edge)
-    return Mesh(
-        points_2d[used],
-        compact_elements,
-        node_sets=node_sets,
-        edge_sets=compact_edges,
+    return Mesh(points[used], compact_elements, node_sets=node_sets, edge_sets=compact_edges)
+
+
+def read_mesh(path: str | Path):
+    """T3, T6 vagy Q4 kétdimenziós hálót olvas bármely meshio-formátumból."""
+
+    meshio = _meshio()
+    source = meshio.read(Path(path))
+    points = np.asarray(source.points, dtype=float)
+    if points.ndim != 2 or points.shape[1] < 2:
+        raise ValueError("mesh file must contain at least x and y coordinates")
+    if points.shape[1] > 2 and not np.allclose(points[:, 2:], points[0, 2:]):
+        raise ValueError("mesh is not planar; PrimFEM currently supports 2D meshes")
+    points_2d = points[:, :2]
+
+    elements, boundary_blocks = _read_cell_blocks(source, points_2d)
+    edge_sets = _named_boundary_edges(source, boundary_blocks)
+    return _compact_imported_mesh(
+        points_2d,
+        elements,
+        edge_sets,
+        source.point_sets,
+        source.point_data,
     )
 
 
