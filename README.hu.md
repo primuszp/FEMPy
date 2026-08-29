@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/primuszp/FEMPy/actions/workflows/ci.yml/badge.svg)](https://github.com/primuszp/FEMPy/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-1.1.0-2E86C1.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.1.0-2E86C1.svg)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-27AE60.svg)](LICENSE)
 
 Olvasható, validált és memóriahatékony kétdimenziós végeselemes könyvtár
@@ -18,13 +18,9 @@ klasszikus benchmarkok és ParaView-kompatibilis export tartozik hozzá.
 
 ![T6 végeselemes elemzés magyar tudományos ábrákkal](examples/t6_report_hu.png)
 
-Gyors dokumentációs hivatkozások:
-
-- [API-referencia](docs/API.md)
-- [részletes kódmagyarázat](docs/KODMAGYARAZAT.md)
-- [klasszikus validáció](docs/VALIDACIO.md)
-- [futtatható példák](examples/README.md)
-- [változásnapló](CHANGELOG.md)
+Ez a README a teljes magyar projektútmutató. Egy helyen mutatja be a telepítést,
+a publikus API-t, a hálózást, a megoldókat, a megjelenítést, a validációt és a
+futtatható példákat.
 
 ## Miért FEMPy?
 
@@ -380,9 +376,6 @@ Az aktuális T6 eredmények:
 | karcsú konzol | `0,2232%` |
 | Cook-membrán | `0,03256%` |
 
-- Módszertan: [`docs/VALIDACIO.md`](docs/VALIDACIO.md)
-- Generált eredmények: [`examples/classic_validation_results.md`](examples/classic_validation_results.md)
-
 ## Kompatibilitási import
 
 ```python
@@ -414,18 +407,12 @@ induló indexeire alakítják. Az új számítás már a ritka megoldót haszná
 | [`protus_compat.py`](examples/protus_compat.py) | PROTUS-import | nem |
 | [`triangle_from_myfem.py`](examples/triangle_from_myfem.py) | Myfem/FEMaster-import | nem |
 
-Az összes példa leírása: [`examples/README.md`](examples/README.md).
+## Projektstruktúra
 
-## Dokumentáció és projektstruktúra
-
-- [`docs/API.md`](docs/API.md): tömör publikus API-referencia;
-- [`docs/KODMAGYARAZAT.md`](docs/KODMAGYARAZAT.md): numerikus és szerkezeti
-  kódmagyarázat;
-- [`docs/VALIDACIO.md`](docs/VALIDACIO.md): benchmarkok, referenciák és
-  elfogadási feltételek;
 - `fempy/elements.py`: alakfüggvények, `B` mátrix, merevség és tömeg;
 - `fempy/model.py`: ritka összeállítás, peremfeltételek és megoldás;
 - `fempy/plotting.py`: lokalizált tudományos vizualizáció;
+- `examples/`: futtatható hálózási, elemzési, ábrázolási és validációs példák;
 - `tests/test_fempy.py`: numerikus, API-, Gmsh- és regressziós tesztek.
 
 ## Fejlesztés és ellenőrzés
@@ -439,7 +426,6 @@ python -m build
 ```
 
 A GitHub Actions ugyanezt Python 3.10, 3.11 és 3.12 alatt hajtja végre.
-Közreműködés előtt lásd a [`CONTRIBUTING.md`](CONTRIBUTING.md) fájlt.
 
 ## Mértékegységek
 

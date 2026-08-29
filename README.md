@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/primuszp/FEMPy/actions/workflows/ci.yml/badge.svg)](https://github.com/primuszp/FEMPy/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-1.1.0-2E86C1.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.1.0-2E86C1.svg)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-27AE60.svg)](LICENSE)
 
 A readable, validated, and memory-efficient two-dimensional finite element
@@ -19,17 +19,9 @@ ParaView-compatible export are included.
 
 ![T6 finite element analysis with English scientific plots](examples/t6_report_en.png)
 
-Documentation:
-
-- [API reference](docs/API.md)
-- [detailed implementation guide](docs/KODMAGYARAZAT.md)
-- [classical validation](docs/VALIDACIO.md)
-- [runnable examples](examples/README.md)
-- [changelog](CHANGELOG.md)
-
-> The detailed documentation currently contains Hungarian explanations. The
-> public API names, type hints, equations, and runnable examples are
-> language-independent.
+This README is the primary project guide. It covers installation, the public
+API, meshing, solvers, visualization, validation, and runnable examples in one
+place.
 
 ## Why FEMPy?
 
@@ -388,9 +380,6 @@ Current T6 results:
 | slender cantilever | `0.2232%` |
 | Cook's membrane | `0.03256%` |
 
-- Methodology: [`docs/VALIDACIO.md`](docs/VALIDACIO.md)
-- Generated results: [`examples/classic_validation_results.md`](examples/classic_validation_results.md)
-
 ## Compatibility import
 
 ```python
@@ -422,19 +411,12 @@ zero-based indices. The imported analysis then uses the sparse solver.
 | [`protus_compat.py`](examples/protus_compat.py) | PROTUS import | no |
 | [`triangle_from_myfem.py`](examples/triangle_from_myfem.py) | Myfem/FEMaster import | no |
 
-See [`examples/README.md`](examples/README.md) for a description of every
-example.
+## Project structure
 
-## Documentation and project structure
-
-- [`docs/API.md`](docs/API.md): concise public API reference;
-- [`docs/KODMAGYARAZAT.md`](docs/KODMAGYARAZAT.md): numerical and structural
-  implementation guide;
-- [`docs/VALIDACIO.md`](docs/VALIDACIO.md): benchmarks, references, and
-  acceptance criteria;
 - `fempy/elements.py`: shape functions, `B` matrices, stiffness, and mass;
 - `fempy/model.py`: sparse assembly, boundary conditions, and solution;
 - `fempy/plotting.py`: localized scientific visualization;
+- `examples/`: runnable meshing, analysis, plotting, and validation programs;
 - `tests/test_fempy.py`: numerical, API, Gmsh, and regression tests.
 
 ## Development and quality checks
@@ -447,8 +429,7 @@ python -m pytest
 python -m build
 ```
 
-GitHub Actions performs the same checks on Python 3.10, 3.11, and 3.12. See
-[`CONTRIBUTING.md`](CONTRIBUTING.md) before contributing.
+GitHub Actions performs the same checks on Python 3.10, 3.11, and 3.12.
 
 ## Units
 
