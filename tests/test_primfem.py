@@ -1,7 +1,9 @@
 import unittest
+from importlib.metadata import version
 from pathlib import Path
 
 import numpy as np
+import primfem
 
 from primfem import (
     CircularArc2D,
@@ -27,6 +29,11 @@ from primfem import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+class PackageTests(unittest.TestCase):
+    def test_runtime_and_distribution_versions_match(self):
+        self.assertEqual(primfem.__version__, version("primfem"))
 
 
 class MaterialTests(unittest.TestCase):
