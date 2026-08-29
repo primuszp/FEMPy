@@ -3,8 +3,8 @@ from importlib.metadata import version
 from pathlib import Path
 
 import numpy as np
-import primfem
 
+import primfem
 from primfem import (
     CircularArc2D,
     Geometry2D,
