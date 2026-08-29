@@ -4,7 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from fempy import LinearElasticMaterial, Model, PlotStyle, rectangular_quad_mesh
+from primfem import LinearElasticMaterial, Model, PlotStyle, rectangular_quad_mesh
 
 mesh = rectangular_quad_mesh(nx=24, ny=6, width=240.0, height=60.0)
 material = LinearElasticMaterial(young_modulus=210_000.0, poisson_ratio=0.3)
@@ -29,7 +29,7 @@ for ax, field in zip(axes.flat[:-1], views, strict=True):
     result.plot(scale=80.0, field=field, ax=ax, style=style)
 
 result.plot_principal_directions(scale=80.0, stride=2, ax=axes.flat[-1], style=style)
-figure.suptitle("FEMPy — egységes mérnöki eredménygaléria", fontsize=16)
+figure.suptitle("PrimFEM — egységes mérnöki eredménygaléria", fontsize=16)
 output = Path(__file__).with_name("colored_cantilever.png")
 figure.savefig(output, dpi=180)
 print(result.summary())

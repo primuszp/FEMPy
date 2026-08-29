@@ -9,8 +9,8 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from fempy import PlotStyle, SolverOptions, load_myfem, plot_sparse_matrix
-from fempy.solver import sparse_memory_bytes
+from primfem import PlotStyle, SolverOptions, load_myfem, plot_sparse_matrix
+from primfem.solver import sparse_memory_bytes
 
 sample = Path(__file__).with_name("femaster_samples") / "plhole.fem"
 model = load_myfem(sample)
@@ -94,7 +94,7 @@ axes["information"].text(
     fontsize=12,
     bbox={"boxstyle": "round,pad=0.8", "facecolor": "#f4f6f7", "edgecolor": "#7f8c8d"},
 )
-figure.suptitle("FEMPy Edu — sparse stiffness matrix diagnostics", fontsize=16)
+figure.suptitle("PrimFEM — sparse stiffness matrix diagnostics", fontsize=16)
 output = Path(__file__).with_name("sparse_matrix_visualization.png")
 figure.savefig(output, dpi=180)
 print(result.summary())

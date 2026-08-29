@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "fempy-edu"
+name = "primfem"
 version = "1.2.0"
 description = "Readable, validated and sparse 2D finite element library for Python"
 readme = "README.md"
@@ -34,16 +34,16 @@ io = ["meshio>=5.3"]
 dev = ["build>=1.2", "meshio>=5.3", "pytest>=8", "ruff>=0.9"]
 
 [project.urls]
-Homepage = "https://github.com/primuszp/FEMPy"
-Documentation = "https://github.com/primuszp/FEMPy#readme"
-Issues = "https://github.com/primuszp/FEMPy/issues"
-Source = "https://github.com/primuszp/FEMPy"
+Homepage = "https://github.com/primuszp/PrimFEM"
+Documentation = "https://github.com/primuszp/PrimFEM#readme"
+Issues = "https://github.com/primuszp/PrimFEM/issues"
+Source = "https://github.com/primuszp/PrimFEM"
 
 [tool.setuptools.packages.find]
-include = ["fempy*"]
+include = ["primfem*"]
 
 [tool.setuptools.package-data]
-fempy = ["py.typed"]
+primfem = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

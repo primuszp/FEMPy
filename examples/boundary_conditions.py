@@ -4,7 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from fempy import Geometry2D, GmshMesher, LinearElasticMaterial, Model, PlotStyle
+from primfem import Geometry2D, GmshMesher, LinearElasticMaterial, Model, PlotStyle
 
 geometry = Geometry2D("supports").add_rectangle(width=100.0, height=50.0)
 mesh = GmshMesher(element_size=7.0, element_shape="quad").generate(geometry)

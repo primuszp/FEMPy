@@ -1,14 +1,14 @@
-# FEMPy
+# PrimFEM
 
 [English](README.md) | **Magyar**
 
-[![CI](https://github.com/primuszp/FEMPy/actions/workflows/ci.yml/badge.svg)](https://github.com/primuszp/FEMPy/actions/workflows/ci.yml)
+[![CI](https://github.com/primuszp/PrimFEM/actions/workflows/ci.yml/badge.svg)](https://github.com/primuszp/PrimFEM/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/)
 [![Version](https://img.shields.io/badge/version-1.2.0-2E86C1.svg)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-27AE60.svg)](LICENSE)
 
 Olvasható, validált és memóriahatékony kétdimenziós végeselemes könyvtár
-Pythonhoz. A FEMPy kis, következetes API-val kapcsolja össze a geometriát, a
+Pythonhoz. A PrimFEM kis, következetes API-val kapcsolja össze a geometriát, a
 hálózást, a lineáris rugalmassági modellt, a ritka megoldót és a tudományos
 utófeldolgozást.
 
@@ -22,7 +22,7 @@ Ez a README a teljes magyar projektútmutató. Egy helyen mutatja be a telepít�
 a publikus API-t, a hálózást, a megoldókat, a megjelenítést, a validációt és a
 futtatható példákat.
 
-## Miért FEMPy?
+## Miért PrimFEM?
 
 - **Tanulható:** a fő numerikus lépések részletes magyar docstringet és
   kódmagyarázatot kaptak.
@@ -32,6 +32,10 @@ futtatható példákat.
   (T6) elem is elérhető.
 - **Memóriatakarékos:** a globális rendszer SciPy CSR ritka mátrix, a normál
   megoldási út közvetlenül a redukált rendszert állítja össze.
+- **Hatékony terhelésvizsgálat:** a névvel ellátott terhelési esetek közös
+  merevségi mátrixot és azonos kötöttségeknél közös ritka LU-faktorizációt használnak.
+- **Együttműködő:** az opcionális meshio Gmsh, Nastran BDF, VTU, XDMF és
+  további mérnöki hálóformátumokat kezel az alaptelepítés növelése nélkül.
 - **Ellenőrzött:** a CI három Python-verzión futtatja a teszteket, a klasszikus
   FEM-benchmarkokat, a lintet és a csomagépítést.
 - **Publikálható ábrák:** magyar és angol számformázás, mérnöki kitevők,
@@ -49,11 +53,13 @@ futtatható példákat.
 | Geometria | téglalap, sokszög, kör, körív, lyukak, helyi finomítás |
 | Peremfeltétel | fix vagy előírt `ux`/`uy`, név szerinti teljes perem |
 | Terhelés | csomóponti erő, traction, normális nyomás, testgyorsulás |
+| Terhelésvizsgálat | névvel ellátott független esetek, csoportos megoldás, faktorizáció-újrahasználat |
+| Mátrixtárolás | ritka COO-összeállítás, CSR-rendszer, redukált kötött mátrix |
 | Solver | ritka direkt, Jacobi-előkondicionált CG, újrahasználható LU-faktorizáció |
 | Eredmény | reakció, alakváltozás, feszültség, főfeszültség, von Mises |
 | Megjelenítés | háló, peremek, támaszok, mezők, főirányok, ritka mátrix |
 | Export/import | legacy VTK, meshio (Gmsh/BDF/VTU/XDMF), PROTUS és Myfem/FEMaster |
-| Verifikáció | patch-próba, karcsú konzol, Cook-membrán mindhárom elemre |
+| Verifikáció | elemazonosságok, valamint patch-, konzol- és Cook-próba T3/T6/Q4 elemekre |
 
 ## Telepítés
 
@@ -62,14 +68,14 @@ Python 3.10 vagy újabb szükséges.
 Telepítés közvetlenül a GitHub-projektből Gmsh támogatással:
 
 ```powershell
-python -m pip install "fempy-edu[gmsh] @ git+https://github.com/primuszp/FEMPy.git"
+python -m pip install "primfem[gmsh] @ git+https://github.com/primuszp/PrimFEM.git"
 ```
 
 Fejlesztői telepítés:
 
 ```powershell
-git clone https://github.com/primuszp/FEMPy.git
-cd FEMPy
+git clone https://github.com/primuszp/PrimFEM.git
+cd PrimFEM
 python -m pip install -e ".[dev,gmsh]"
 ```
 
@@ -91,7 +97,7 @@ python -m pip install -e ".[gmsh,io]"
 Egy elemzés öt lépése: háló, anyag, modell, peremfeltételek, megoldás.
 
 ```python
-from fempy import LinearElasticMaterial, Model, PlotStyle, rectangular_quad_mesh
+from primfem import LinearElasticMaterial, Model, PlotStyle, rectangular_quad_mesh
 
 # 1. Geometria és strukturált háló [mm]
 mesh = rectangular_quad_mesh(
@@ -160,12 +166,12 @@ külön mátrixcsoportba kerülnek. Teljes példa:
 
 ## T6 hálózás Gmsh segítségével
 
-A FEMPy közvetlenül a Gmsh Python API-ját használja; nem készít köztes `.geo`
+A PrimFEM közvetlenül a Gmsh Python API-ját használja; nem készít köztes `.geo`
 vagy `.inp` fájlt. A geometriai peremnevek a hálózás után is megmaradnak, ezért
 a modell nem függ csomópontszámoktól.
 
 ```python
-from fempy import Geometry2D, GmshMesher, LinearElasticMaterial, Model, PlotStyle
+from primfem import Geometry2D, GmshMesher, LinearElasticMaterial, Model, PlotStyle
 
 # Téglalap kör alakú furattal és helyi hálófinomítással
 geometry = (
@@ -216,7 +222,7 @@ A teljes kétnyelvű példa:
 ### Strukturált T6 háló Gmsh nélkül
 
 ```python
-from fempy import rectangular_t6_mesh
+from primfem import rectangular_t6_mesh
 
 mesh = rectangular_t6_mesh(nx=10, ny=4, width=100.0, height=40.0)
 ```
@@ -224,7 +230,7 @@ mesh = rectangular_t6_mesh(nx=10, ny=4, width=100.0, height=40.0)
 Meglévő, kizárólag Triangle3 elemekből álló háló másodrendűvé emelhető:
 
 ```python
-from fempy import to_quadratic_tri_mesh
+from primfem import to_quadratic_tri_mesh
 
 t6_mesh = to_quadratic_tri_mesh(triangle3_mesh)
 ```
@@ -268,11 +274,11 @@ model.plot_boundary_conditions(style=style)
 
 ## Tudományos és lokalizált plotok
 
-A `PlotStyle` minden FEMPy-ábrán ugyanazt a nyelvet, mértékegységet és
+A `PlotStyle` minden PrimFEM-ábrán ugyanazt a nyelvet, mértékegységet és
 számformázást alkalmazza.
 
 ```python
-from fempy import PlotStyle
+from primfem import PlotStyle
 
 hu = PlotStyle(language="hu", length_unit="mm", stress_unit="MPa")
 en = PlotStyle(language="en", length_unit="mm", stress_unit="MPa")
@@ -309,7 +315,7 @@ A `solve()` alapértelmezett `auto` módja kisebb rendszernél ritka direkt,
 nagyobb rendszernél Jacobi-előkondicionált CG-megoldót választ.
 
 ```python
-from fempy import SolverOptions
+from primfem import SolverOptions
 
 # Automatikus solver
 result = model.solve()
@@ -384,12 +390,12 @@ integrációsponti eredményeket.
 ### Többformátumú hálócsere
 
 Az opcionális `io` extra a meshio segítségével Gmsh, Nastran BDF, VTU, XDMF és
-sok további formátumot támogat. A beolvasott háló ugyanazokon a FEMPy-
+sok további formátumot támogat. A beolvasott háló ugyanazokon a PrimFEM-
 ellenőrzéseken megy át, a névvel ellátott Gmsh fizikai görbék pedig névvel
-ellátott FEMPy-peremmé alakulnak.
+ellátott PrimFEM-peremmé alakulnak.
 
 ```python
-from fempy import Mesh
+from primfem import Mesh
 
 mesh = Mesh.read("plate.msh")
 mesh.write("plate.vtu")
@@ -404,7 +410,7 @@ ember által olvasható legacy VTK kimenethez.
 ## Klasszikus verifikáció
 
 ```python
-from fempy import run_classic_validations
+from primfem import run_classic_validations
 
 report = run_classic_validations()
 print(report.summary())
@@ -417,7 +423,7 @@ assert report.passed
 Az elemek matematikai azonosságai szerkezeti benchmark nélkül is ellenőrizhetők:
 
 ```python
-from fempy import verify_supported_elements
+from primfem import verify_supported_elements
 
 for element_report in verify_supported_elements(sample_count=50):
     print(element_report.summary())
@@ -446,7 +452,7 @@ Az aktuális T6 eredmények:
 ## Kompatibilitási import
 
 ```python
-from fempy import load_myfem, load_protus
+from primfem import load_myfem, load_protus
 
 myfem_model = load_myfem("model.fem")
 myfem_result = myfem_model.solve()
@@ -455,7 +461,7 @@ protus_model = load_protus("INPUT_FEA_PROTUS.txt")
 protus_result = protus_model.solve()
 ```
 
-Az importerek az egytől induló régi számozást automatikusan a FEMPy nullától
+Az importerek az egytől induló régi számozást automatikusan a PrimFEM nullától
 induló indexeire alakítják. Az új számítás már a ritka megoldót használja.
 
 ## Futtatható példák
@@ -478,18 +484,18 @@ induló indexeire alakítják. Az új számítás már a ritka megoldót haszná
 
 ## Projektstruktúra
 
-- `fempy/elements.py`: alakfüggvények, `B` mátrix, merevség és tömeg;
-- `fempy/model.py`: ritka összeállítás, peremfeltételek és megoldás;
-- `fempy/plotting.py`: lokalizált tudományos vizualizáció;
+- `primfem/elements.py`: alakfüggvények, `B` mátrix, merevség és tömeg;
+- `primfem/model.py`: ritka összeállítás, peremfeltételek és megoldás;
+- `primfem/plotting.py`: lokalizált tudományos vizualizáció;
 - `examples/`: futtatható hálózási, elemzési, ábrázolási és validációs példák;
-- `tests/test_fempy.py`: numerikus, API-, Gmsh- és regressziós tesztek.
+- `tests/test_primfem.py`: numerikus, API-, Gmsh- és regressziós tesztek.
 
 ## Fejlesztés és ellenőrzés
 
 ```powershell
 python -m pip install -e ".[dev,gmsh]"
-python -m ruff check fempy tests examples
-python -m ruff format --check fempy tests examples
+python -m ruff check primfem tests examples
+python -m ruff format --check primfem tests examples
 python -m pytest
 python -m build
 ```
@@ -498,7 +504,7 @@ A GitHub Actions ugyanezt Python 3.10, 3.11 és 3.12 alatt hajtja végre.
 
 ## Mértékegységek
 
-A FEMPy nem kényszerít mértékegységrendszert. Minden bemenetet egyetlen
+A PrimFEM nem kényszerít mértékegységrendszert. Minden bemenetet egyetlen
 konzisztens rendszerben kell megadni. Például N–mm rendszerben:
 
 - geometria és elmozdulás: `mm`;
@@ -512,7 +518,7 @@ mértékegység-konverziót.
 
 ## Jelenlegi korlátok
 
-A FEMPy szándékosan átlátható lineáris statikai könyvtár. Jelenleg modellenként
+A PrimFEM szándékosan átlátható lineáris statikai könyvtár. Jelenleg modellenként
 egy izotróp anyagot és egy vastagságot kezel. Nincs kontakt, képlékenység,
 geometriai nemlinearitás, törés, dinamikai időintegrálás vagy ipari
 minőségbiztosítás. Biztonságkritikus mérnöki döntés előtt független

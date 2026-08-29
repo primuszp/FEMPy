@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from fempy import load_myfem
+from primfem import load_myfem
 
 root = Path(__file__).resolve().parents[1]
 model = load_myfem(root / "tests" / "data" / "myfem" / "coarse.fem")

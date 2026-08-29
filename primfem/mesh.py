@@ -1,7 +1,7 @@
 """Végeselemes háló és strukturált hálógenerátorok.
 
 A :class:`Mesh` kizárólag geometriát és topológiát tárol. Nem tartalmaz anyagot,
-terhelést vagy peremfeltételt; ezek a :class:`fempy.model.Model` részei. Ez a
+terhelést vagy peremfeltételt; ezek a :class:`primfem.model.Model` részei. Ez a
 szétválasztás teszi lehetővé, hogy ugyanazt a hálót több számításhoz használjuk.
 """
 
@@ -295,7 +295,7 @@ def to_quadratic_tri_mesh(mesh: Mesh) -> Mesh:
     szomszédos elemek kompatibilisek maradnak. Az elnevezett peremélek két
     lineáris szakaszra bomlanak, a középcsomópont pedig bekerül a megfelelő
     perem csomóponthalmazába. Görbült CAD-peremhez közvetlenül a
-    :class:`fempy.gmsh.GmshMesher` ``order=2`` módja ajánlott, mert az a
+    :class:`primfem.gmsh.GmshMesher` ``order=2`` módja ajánlott, mert az a
     középcsomópontot a valódi görbére helyezi.
     """
 

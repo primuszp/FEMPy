@@ -1,10 +1,10 @@
-"""A FEMPy teljes klasszikus verifikációs csomagjának futtatása."""
+"""A PrimFEM teljes klasszikus verifikációs csomagjának futtatása."""
 
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from fempy import run_classic_validations
+from primfem import run_classic_validations
 
 directory = Path(__file__).resolve().parent
 report = run_classic_validations()

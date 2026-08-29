@@ -2,7 +2,7 @@
 
 Az örökölt fájlok egytől számozzák a csomópontokat, míg az új Python API
 nullától. Az importerek ezt automatikusan átalakítják, ellenőrzik a fejlécben
-megadott darabszámokat, majd szabályos :class:`fempy.model.Model` objektumot
+megadott darabszámokat, majd szabályos :class:`primfem.model.Model` objektumot
 hoznak létre. A forrásfájlokat soha nem módosítják.
 """
 

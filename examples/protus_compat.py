@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from fempy import load_protus
+from primfem import load_protus
 
 root = Path(__file__).resolve().parents[1]
 model = load_protus(root / "tests" / "data" / "protus" / "INPUT_FEA_PROTUS.txt")

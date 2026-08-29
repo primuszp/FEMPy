@@ -1,18 +1,18 @@
-# FEMPy
+# PrimFEM
 
 **English** | [Magyar](README.hu.md)
 
-[![CI](https://github.com/primuszp/FEMPy/actions/workflows/ci.yml/badge.svg)](https://github.com/primuszp/FEMPy/actions/workflows/ci.yml)
+[![CI](https://github.com/primuszp/PrimFEM/actions/workflows/ci.yml/badge.svg)](https://github.com/primuszp/PrimFEM/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/)
 [![Version](https://img.shields.io/badge/version-1.2.0-2E86C1.svg)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-27AE60.svg)](LICENSE)
 
 A readable, validated, and memory-efficient two-dimensional finite element
-library for Python. FEMPy connects geometry, meshing, linear elasticity,
+library for Python. PrimFEM connects geometry, meshing, linear elasticity,
 sparse solvers, and scientific post-processing through a small, consistent
 API.
 
-FEMPy is designed for teaching, but its numerical implementation follows
+PrimFEM is designed for teaching, but its numerical implementation follows
 sound engineering practice: verified elements, consistent boundary loads,
 sparse matrices, solver diagnostics, classical benchmarks, and
 ParaView-compatible export are included.
@@ -23,7 +23,7 @@ This README is the primary project guide. It covers installation, the public
 API, meshing, solvers, visualization, validation, and runnable examples in one
 place.
 
-## Why FEMPy?
+## Why PrimFEM?
 
 - **Easy to learn:** the numerical stages are kept explicit and the code is
   documented in detail.
@@ -33,6 +33,10 @@ place.
   and Quad4.
 - **Memory-efficient:** the global system is stored as a SciPy CSR sparse
   matrix, and the standard solve path assembles the reduced system directly.
+- **Efficient load studies:** named load cases share the stiffness matrix and
+  can reuse a sparse LU factorization when their constrained DOFs match.
+- **Interoperable:** optional meshio exchange covers Gmsh, Nastran BDF, VTU,
+  XDMF, and other engineering mesh formats without burdening the core install.
 - **Verified:** continuous integration tests the library, classical FEM
   benchmarks, formatting, and package build on three Python versions.
 - **Publication-ready plots:** English and Hungarian number formatting,
@@ -51,27 +55,29 @@ place.
 | Geometry | rectangles, polygons, circles, arcs, holes, local refinement |
 | Constraints | fixed or prescribed `ux`/`uy`, complete named boundaries |
 | Loads | nodal force, traction, normal pressure, body acceleration |
+| Load studies | named independent cases, grouped solution, reusable factorization |
+| Matrix storage | sparse COO assembly, CSR systems, reduced constrained matrices |
 | Solvers | sparse direct, Jacobi-preconditioned CG, reusable LU factorization |
 | Results | reaction, strain, stress, principal stress, von Mises stress |
 | Visualization | mesh, boundaries, supports, fields, principal directions, sparse matrices |
 | Import/export | legacy VTK, meshio (Gmsh/BDF/VTU/XDMF), PROTUS and Myfem/FEMaster |
-| Verification | patch test, slender cantilever, Cook's membrane for every element type |
+| Verification | element identities plus patch, cantilever, and Cook benchmarks for T3/T6/Q4 |
 
 ## Installation
 
-FEMPy requires Python 3.10 or newer.
+PrimFEM requires Python 3.10 or newer.
 
 Install directly from GitHub with optional Gmsh support:
 
 ```powershell
-python -m pip install "fempy-edu[gmsh] @ git+https://github.com/primuszp/FEMPy.git"
+python -m pip install "primfem[gmsh] @ git+https://github.com/primuszp/PrimFEM.git"
 ```
 
 For development:
 
 ```powershell
-git clone https://github.com/primuszp/FEMPy.git
-cd FEMPy
+git clone https://github.com/primuszp/PrimFEM.git
+cd PrimFEM
 python -m pip install -e ".[dev,gmsh]"
 ```
 
@@ -94,7 +100,7 @@ A complete analysis has five clear stages: mesh, material, model, boundary
 conditions, and solution.
 
 ```python
-from fempy import LinearElasticMaterial, Model, PlotStyle, rectangular_quad_mesh
+from primfem import LinearElasticMaterial, Model, PlotStyle, rectangular_quad_mesh
 
 # 1. Geometry and structured mesh [mm]
 mesh = rectangular_quad_mesh(
@@ -164,12 +170,12 @@ automatically placed in separate matrix groups. See
 
 ## T6 meshing with Gmsh
 
-FEMPy calls the Gmsh Python API directly; no intermediate `.geo` or `.inp`
+PrimFEM calls the Gmsh Python API directly; no intermediate `.geo` or `.inp`
 file is required. Geometric boundary names survive meshing, so the model does
 not depend on node numbering.
 
 ```python
-from fempy import Geometry2D, GmshMesher, LinearElasticMaterial, Model, PlotStyle
+from primfem import Geometry2D, GmshMesher, LinearElasticMaterial, Model, PlotStyle
 
 # A rectangular plate with a circular hole and local mesh refinement
 geometry = (
@@ -220,7 +226,7 @@ The full bilingual example is
 ### Structured T6 mesh without Gmsh
 
 ```python
-from fempy import rectangular_t6_mesh
+from primfem import rectangular_t6_mesh
 
 mesh = rectangular_t6_mesh(nx=10, ny=4, width=100.0, height=40.0)
 ```
@@ -228,7 +234,7 @@ mesh = rectangular_t6_mesh(nx=10, ny=4, width=100.0, height=40.0)
 An existing all-Triangle3 mesh can also be upgraded to second order:
 
 ```python
-from fempy import to_quadratic_tri_mesh
+from primfem import to_quadratic_tri_mesh
 
 t6_mesh = to_quadratic_tri_mesh(triangle3_mesh)
 ```
@@ -273,10 +279,10 @@ model.plot_boundary_conditions(style=style)
 ## Scientific and localized plots
 
 `PlotStyle` applies one language, unit system, and number format consistently
-to every FEMPy figure.
+to every PrimFEM figure.
 
 ```python
-from fempy import PlotStyle
+from primfem import PlotStyle
 
 hu = PlotStyle(language="hu", length_unit="mm", stress_unit="MPa")
 en = PlotStyle(language="en", length_unit="mm", stress_unit="MPa")
@@ -313,7 +319,7 @@ The default `auto` mode uses a sparse direct solver for smaller systems and a
 Jacobi-preconditioned conjugate-gradient solver for larger systems.
 
 ```python
-from fempy import SolverOptions
+from primfem import SolverOptions
 
 # Automatic solver selection
 result = model.solve()
@@ -388,11 +394,11 @@ and separate integration-point results.
 ### Multi-format mesh exchange
 
 With the optional `io` extra, meshio adds Gmsh, Nastran BDF, VTU, XDMF, and
-many other formats. Imported meshes still pass FEMPy's geometry checks, and
-named Gmsh physical curves become named FEMPy boundaries.
+many other formats. Imported meshes still pass PrimFEM's geometry checks, and
+named Gmsh physical curves become named PrimFEM boundaries.
 
 ```python
-from fempy import Mesh
+from primfem import Mesh
 
 mesh = Mesh.read("plate.msh")
 mesh.write("plate.vtu")
@@ -407,7 +413,7 @@ human-readable legacy VTK output.
 ## Classical verification
 
 ```python
-from fempy import run_classic_validations
+from primfem import run_classic_validations
 
 report = run_classic_validations()
 print(report.summary())
@@ -421,7 +427,7 @@ The element implementations can also verify their mathematical identities
 independently of a structural benchmark:
 
 ```python
-from fempy import verify_supported_elements
+from primfem import verify_supported_elements
 
 for element_report in verify_supported_elements(sample_count=50):
     print(element_report.summary())
@@ -449,7 +455,7 @@ Current T6 results:
 ## Compatibility import
 
 ```python
-from fempy import load_myfem, load_protus
+from primfem import load_myfem, load_protus
 
 myfem_model = load_myfem("model.fem")
 myfem_result = myfem_model.solve()
@@ -458,7 +464,7 @@ protus_model = load_protus("INPUT_FEA_PROTUS.txt")
 protus_result = protus_model.solve()
 ```
 
-Importers automatically convert legacy one-based numbering to FEMPy's
+Importers automatically convert legacy one-based numbering to PrimFEM's
 zero-based indices. The imported analysis then uses the sparse solver.
 
 ## Runnable examples
@@ -481,18 +487,18 @@ zero-based indices. The imported analysis then uses the sparse solver.
 
 ## Project structure
 
-- `fempy/elements.py`: shape functions, `B` matrices, stiffness, and mass;
-- `fempy/model.py`: sparse assembly, boundary conditions, and solution;
-- `fempy/plotting.py`: localized scientific visualization;
+- `primfem/elements.py`: shape functions, `B` matrices, stiffness, and mass;
+- `primfem/model.py`: sparse assembly, boundary conditions, and solution;
+- `primfem/plotting.py`: localized scientific visualization;
 - `examples/`: runnable meshing, analysis, plotting, and validation programs;
-- `tests/test_fempy.py`: numerical, API, Gmsh, and regression tests.
+- `tests/test_primfem.py`: numerical, API, Gmsh, and regression tests.
 
 ## Development and quality checks
 
 ```powershell
 python -m pip install -e ".[dev,gmsh]"
-python -m ruff check fempy tests examples
-python -m ruff format --check fempy tests examples
+python -m ruff check primfem tests examples
+python -m ruff format --check primfem tests examples
 python -m pytest
 python -m build
 ```
@@ -501,7 +507,7 @@ GitHub Actions performs the same checks on Python 3.10, 3.11, and 3.12.
 
 ## Units
 
-FEMPy does not impose a unit system. All inputs must use one consistent
+PrimFEM does not impose a unit system. All inputs must use one consistent
 system. For example, in an N–mm system:
 
 - geometry and displacement: `mm`;
@@ -514,7 +520,7 @@ system. For example, in an N–mm system:
 
 ## Current limitations
 
-FEMPy is intentionally a transparent linear-static library. A model currently
+PrimFEM is intentionally a transparent linear-static library. A model currently
 uses one isotropic material and one thickness. Contact, plasticity, geometric
 nonlinearity, fracture, dynamic time integration, and industrial quality
 assurance are outside the present scope. Safety-critical engineering decisions

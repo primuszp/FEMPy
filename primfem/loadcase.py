@@ -1,7 +1,7 @@
 """Terhelési esetek egy közös végeselemes modellen.
 
 A :class:`LoadCase` ugyanazt a jól olvasható terhelési és peremfeltétel-API-t
-adja, mint a :class:`fempy.model.Model`, de a hálót, anyagot és vastagságot nem
+adja, mint a :class:`primfem.model.Model`, de a hálót, anyagot és vastagságot nem
 másolja. Így egy geometriai modellhez több egymástól független statikai eset
 definiálható, majd közös merevségi mátrixszal oldható meg.
 """

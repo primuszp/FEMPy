@@ -8,7 +8,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from fempy import LinearElasticMaterial, Model, PlaneCondition, rectangular_quad_mesh
+from primfem import LinearElasticMaterial, Model, PlaneCondition, rectangular_quad_mesh
 
 # 20×5 elem, vagyis 21×6 csomópont a 200×50 mm-es tartományon.
 mesh = rectangular_quad_mesh(nx=20, ny=5, width=200.0, height=50.0)

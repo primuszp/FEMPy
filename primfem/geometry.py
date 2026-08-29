@@ -2,7 +2,7 @@
 
 A modul szándékosan kevés építőelemet használ: pontot, egyenes szakaszt,
 körívet és zárt hurkot. Ez elegendő sok oktatási síkbeli feladathoz, miközben
-a :mod:`fempy.gmsh` adapternek nem kell végeselemes fogalmakat ismernie.
+a :mod:`primfem.gmsh` adapternek nem kell végeselemes fogalmakat ismernie.
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ class Geometry2D:
     """Láncolható API egy külső kontúr és tetszőleges lyukak leírására.
 
     A peremnevek már a geometria létrehozásakor bekerülnek a modellbe. A Gmsh
-    ezeket fizikai görbecsoportként őrzi meg, majd a :class:`fempy.mesh.Mesh`
+    ezeket fizikai görbecsoportként őrzi meg, majd a :class:`primfem.mesh.Mesh`
     név szerinti csomópont- és élhalmazként kapja vissza.
     """
 

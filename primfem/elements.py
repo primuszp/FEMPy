@@ -8,7 +8,7 @@ A modul három oktatási szempontból fontos elemet valósít meg:
 
 Mindhárom elem ugyanazt a kis interfészt követi. Az elem csak lokális műveleteket
 végez: ``B`` mátrix, elemi merevség, tömegmátrix és eredménykinyerés. A globális
-összeállítás a :mod:`fempy.model` feladata.
+összeállítás a :mod:`primfem.model` feladata.
 """
 
 from __future__ import annotations

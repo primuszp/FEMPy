@@ -1,7 +1,7 @@
 """Modern Gmsh Python API-ra épülő opcionális kétdimenziós hálózó.
 
 Nem ír köztes ``.geo`` vagy ``.inp`` fájlt. A geometria, a háló és a fizikai
-peremcsoportok közvetlenül memóriában haladnak át a Gmsh és a FEMPy között.
+peremcsoportok közvetlenül memóriában haladnak át a Gmsh és a PrimFEM között.
 """
 
 from __future__ import annotations
@@ -129,7 +129,7 @@ class GmshMesher:
             gmsh.model.mesh.setRecombine(2, surface_tag)
 
     def _read_mesh(self, gmsh: Any, surface_tag: int, curve_groups) -> Mesh:
-        """A Gmsh címkéit tömör, nullától induló FEMPy indexekké alakítja."""
+        """A Gmsh címkéit tömör, nullától induló PrimFEM indexekké alakítja."""
 
         node_tags, coordinates, _ = gmsh.model.mesh.getNodes()
         xyz = np.asarray(coordinates, dtype=float).reshape((-1, 3))
@@ -212,7 +212,7 @@ def _positive_orientation(
 
 
 def _import_gmsh():
-    """Késleltetve importál, hogy a FEMPy alapfunkciói Gmsh nélkül is fussanak."""
+    """Késleltetve importál, hogy a PrimFEM alapfunkciói Gmsh nélkül is fussanak."""
 
     try:
         import gmsh

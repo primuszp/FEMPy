@@ -1,6 +1,6 @@
 """Opcionális, többformátumú háló- és eredmény I/O a meshio segítségével.
 
-A modul késleltetve importálja a ``meshio`` csomagot, ezért a FEMPy alapvető
+A modul késleltetve importálja a ``meshio`` csomagot, ezért a PrimFEM alapvető
 hálózása és megoldója az opcionális függőség nélkül is használható. A belső
 ``Mesh`` mindig saját, ellenőrzött T3/T6/Q4 elemeket és nullától induló
 indexeket kap.
@@ -25,13 +25,13 @@ def _meshio():
         import meshio
     except ImportError as exc:
         raise MeshioNotInstalledError(
-            "meshio support requires: python -m pip install 'fempy-edu[io]'"
+            "meshio support requires: python -m pip install 'primfem[io]'"
         ) from exc
     return meshio
 
 
 def _positive_element(cell_type: str, node_ids: np.ndarray, points: np.ndarray):
-    """A külső cellasorrendet pozitív FEMPy-elemmé alakítja."""
+    """A külső cellasorrendet pozitív PrimFEM-elemmé alakítja."""
 
     ids = tuple(map(int, node_ids))
     corners = points[list(ids[:4] if cell_type == "quad" else ids[:3])]
@@ -66,7 +66,7 @@ def read_mesh(path: str | Path):
     if points.ndim != 2 or points.shape[1] < 2:
         raise ValueError("mesh file must contain at least x and y coordinates")
     if points.shape[1] > 2 and not np.allclose(points[:, 2:], points[0, 2:]):
-        raise ValueError("mesh is not planar; FEMPy currently supports 2D meshes")
+        raise ValueError("mesh is not planar; PrimFEM currently supports 2D meshes")
     points_2d = points[:, :2]
 
     elements = []

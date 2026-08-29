@@ -6,7 +6,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection, PolyCollection
 
-from fempy import Geometry2D, GmshMesher
+from primfem import Geometry2D, GmshMesher
 
 geometry = (
     Geometry2D("quad_plate_with_hole")

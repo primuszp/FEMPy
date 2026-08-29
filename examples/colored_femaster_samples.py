@@ -4,7 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from fempy import PlotStyle, load_myfem
+from primfem import PlotStyle, load_myfem
 
 sample_directory = Path(__file__).with_name("femaster_samples")
 sample_names = (
@@ -48,7 +48,7 @@ for ax, sample_name in zip(axes.flat, sample_names, strict=True):
     )
     print(result.summary())
 
-figure.suptitle("FEMaster2D minták egységes FEMPy kiértékelése", fontsize=16)
+figure.suptitle("FEMaster2D minták egységes PrimFEM kiértékelése", fontsize=16)
 output = Path(__file__).with_name("colored_femaster_samples.png")
 figure.savefig(output, dpi=170)
 print(f"Saved: {output}")

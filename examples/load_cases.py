@@ -1,6 +1,6 @@
 """Több terhelési eset megoldása egyetlen ritka LU-faktorizációval."""
 
-from fempy import LinearElasticMaterial, Model, rectangular_quad_mesh
+from primfem import LinearElasticMaterial, Model, rectangular_quad_mesh
 
 mesh = rectangular_quad_mesh(nx=30, ny=6, width=300.0, height=60.0)
 model = Model(

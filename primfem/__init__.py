@@ -1,4 +1,4 @@
-"""A FEMPy Edu kétdimenziós, oktatási célú végeselemes csomagja.
+"""A PrimFEM olvasható, validált kétdimenziós végeselemes csomagja.
 
 A csomag gyökere szándékosan csak a lineárisan rugalmas elemzéshez szükséges,
 magas szintű fogalmakat exportálja. Így a felhasználónak nem kell belső

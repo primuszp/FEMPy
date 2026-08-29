@@ -4,7 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from fempy import Geometry2D, GmshMesher, LinearElasticMaterial, Model, PlotStyle
+from primfem import Geometry2D, GmshMesher, LinearElasticMaterial, Model, PlotStyle
 
 geometry = (
     Geometry2D("pressurized_plate")

@@ -1,4 +1,4 @@
-"""Klasszikus lineáris rugalmassági benchmarkok a FEMPy ellenőrzéséhez.
+"""Klasszikus lineáris rugalmassági benchmarkok a PrimFEM ellenőrzéséhez.
 
 A modul három különböző hibaforrást vizsgál:
 
@@ -83,7 +83,7 @@ class ValidationReport:
     def summary(self) -> str:
         """Terminálban jól olvasható, többsoros összefoglalót készít."""
 
-        lines = ["FEMPy klasszikus validáció: " + ("PASS" if self.passed else "FAIL")]
+        lines = ["PrimFEM klasszikus validáció: " + ("PASS" if self.passed else "FAIL")]
         for case in self.cases:
             verdict = "PASS" if case.passed else "FAIL"
             lines.append(
@@ -97,7 +97,7 @@ class ValidationReport:
 
         output = Path(path)
         lines = [
-            "# FEMPy klasszikus validációs eredmények",
+            "# PrimFEM klasszikus validációs eredmények",
             "",
             f"Összesített eredmény: **{'PASS' if self.passed else 'FAIL'}**",
             "",

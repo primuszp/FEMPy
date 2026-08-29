@@ -152,7 +152,7 @@ def plot_boundaries(
     """Színesen kirajzolja a háló névvel ellátott peremcsoportjait.
 
     Args:
-        mesh: Peremhalmazokat tartalmazó :class:`fempy.mesh.Mesh`.
+        mesh: Peremhalmazokat tartalmazó :class:`primfem.mesh.Mesh`.
         names: Kirajzolandó peremnevek. ``None`` minden peremet jelent.
         ax: Opcionális Matplotlib tengely.
         show_mesh: Látszódjon-e halványan a teljes végeselemes háló.

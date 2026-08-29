@@ -4,7 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from fempy import PlotStyle, load_protus
+from primfem import PlotStyle, load_protus
 
 root = Path(__file__).resolve().parents[1]
 model = load_protus(root / "tests" / "data" / "protus" / "INPUT_FEA_PROTUS.txt")
@@ -17,7 +17,7 @@ result.plot(scale=30.0, field="displacement_magnitude", ax=axes[0, 0], style=sty
 result.plot(scale=30.0, field="nodal_von_mises", ax=axes[0, 1], style=style)
 result.plot(scale=30.0, field="principal_stress_1", ax=axes[1, 0], style=style)
 result.plot_principal_directions(scale=30.0, stride=4, ax=axes[1, 1], style=style)
-figure.suptitle("Az eredeti PROTUS modell egységes FEMPy ábrái", fontsize=16)
+figure.suptitle("Az eredeti PROTUS modell egységes PrimFEM ábrái", fontsize=16)
 output = Path(__file__).with_name("colored_protus.png")
 figure.savefig(output, dpi=180)
 print(result.summary())

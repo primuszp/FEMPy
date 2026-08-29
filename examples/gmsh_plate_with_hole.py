@@ -4,7 +4,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from fempy import Geometry2D, GmshMesher, LinearElasticMaterial, Model, PlotStyle
+from primfem import Geometry2D, GmshMesher, LinearElasticMaterial, Model, PlotStyle
 
 # A négy téglalapoldal automatikusan bottom/right/top/left nevet kap. A kör
 # külön "hole" perem, amelyhez kisebb helyi elemméretet kérünk.

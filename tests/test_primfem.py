@@ -3,7 +3,7 @@ from pathlib import Path
 
 import numpy as np
 
-from fempy import (
+from primfem import (
     CircularArc2D,
     Geometry2D,
     GmshMesher,
