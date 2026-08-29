@@ -23,6 +23,7 @@ from fempy import (
     rectangular_quad_mesh,
     rectangular_t6_mesh,
     run_classic_validations,
+    verify_supported_elements,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -143,6 +144,45 @@ class ElementTests(unittest.TestCase):
 
 
 class ModelTests(unittest.TestCase):
+    def test_load_cases_share_direct_factorization_and_match_individual_solution(self):
+        mesh = rectangular_quad_mesh(8, 2, 8.0, 2.0)
+        model = Model(mesh, LinearElasticMaterial(10_000.0, 0.3), name="shared model")
+        model.fix_nodes(mesh.nodes_where(x=0.0))
+        right = mesh.nodes_where(x=8.0)
+        vertical = model.load_case("vertical").add_nodal_loads(right, fy=-20.0 / len(right))
+        horizontal = model.load_case("horizontal").add_nodal_loads(right, fx=10.0 / len(right))
+
+        individual = vertical.solve("direct")
+        results = model.solve_cases((vertical, horizontal), "direct")
+
+        self.assertEqual(list(results), ["vertical", "horizontal"])
+        self.assertTrue(
+            np.allclose(results["vertical"].displacement, individual.displacement, atol=1e-12)
+        )
+        self.assertFalse(results["vertical"].solver_info.factorization_reused)
+        self.assertTrue(results["horizontal"].solver_info.factorization_reused)
+        self.assertEqual(
+            results["vertical"].solver_info.nonzero_entries,
+            results["horizontal"].solver_info.nonzero_entries,
+        )
+
+    def test_load_cases_are_independent_and_different_supports_are_separate_groups(self):
+        mesh = rectangular_quad_mesh(3, 1, 3.0, 1.0)
+        model = Model(mesh, LinearElasticMaterial(1000.0, 0.3))
+        left = model.load_case("left support", inherit=False)
+        left.fix_nodes(mesh.nodes_where(x=0.0)).add_nodal_load(mesh.nodes_where(x=3.0)[-1], fy=-1.0)
+        right = model.load_case("right support", inherit=False)
+        right.fix_nodes(mesh.nodes_where(x=3.0)).add_nodal_load(
+            mesh.nodes_where(x=0.0)[-1], fy=-1.0
+        )
+
+        results = model.solve_cases((left, right), "direct")
+
+        self.assertFalse(results["left support"].solver_info.factorization_reused)
+        self.assertFalse(results["right support"].solver_info.factorization_reused)
+        self.assertFalse(np.any(np.isfinite(model.prescribed_displacements)))
+        self.assertEqual(np.count_nonzero(model.force_vector), 0)
+
     def test_positive_pressure_acts_inward_and_prescribed_boundary_is_vectorized(self):
         mesh = Mesh(
             [(0.0, 0.0), (2.0, 0.0), (2.0, 1.0), (0.0, 1.0)],
@@ -309,6 +349,69 @@ class ModelTests(unittest.TestCase):
         model.add_nodal_load(mesh.nodes_where(x=3.0)[-1], fy=-1.0)
         result = model.solve(SolverOptions(direct_dof_limit=1, max_iterations=5000))
         self.assertEqual(result.solver_info.method, SolverMethod.CONJUGATE_GRADIENT)
+
+
+class ElementCheckTests(unittest.TestCase):
+    def test_all_supported_elements_pass_general_mathematical_checks(self):
+        reports = verify_supported_elements(sample_count=30)
+        self.assertEqual(
+            [report.element for report in reports], ["Triangle3", "Triangle6", "Quad4"]
+        )
+        self.assertTrue(all(report.passed for report in reports))
+        self.assertTrue(all("PASS" in report.summary() for report in reports))
+
+    def test_element_check_inputs_are_validated(self):
+        with self.assertRaises(ValueError):
+            verify_supported_elements(sample_count=0)
+
+
+class MeshioTests(unittest.TestCase):
+    def test_gmsh_physical_boundary_is_preserved_by_meshio_import(self):
+        import meshio
+
+        output = ROOT / "tests" / "_temporary_meshio.msh"
+        exchanged = ROOT / "tests" / "_temporary_meshio.vtu"
+        points = np.array(((0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)))
+        external = meshio.Mesh(
+            points,
+            [("triangle", np.array(((0, 1, 2),))), ("line", np.array(((2, 0),)))],
+            field_data={"domain": np.array((1, 2)), "left": np.array((2, 1))},
+            cell_data={
+                "gmsh:physical": [np.array((1,)), np.array((2,))],
+                "gmsh:geometrical": [np.array((1,)), np.array((2,))],
+            },
+        )
+        try:
+            meshio.write(output, external, file_format="gmsh22", binary=False)
+            mesh = Mesh.read(output)
+            self.assertEqual(mesh.boundary_names, ("left",))
+            self.assertEqual(mesh.boundary_edges("left"), [(2, 0)])
+            self.assertTrue(all(isinstance(element, Triangle3) for element in mesh.elements))
+            mesh.write(exchanged)
+            reread = Mesh.read(exchanged)
+            self.assertEqual(reread.boundary_nodes("left"), [0, 2])
+            self.assertEqual(reread.boundary_edges("left"), [(2, 0)])
+        finally:
+            output.unlink(missing_ok=True)
+            exchanged.unlink(missing_ok=True)
+
+    def test_result_vtu_export_contains_nodal_and_element_fields(self):
+        import meshio
+
+        mesh = rectangular_t6_mesh(1, 1, 1.0, 1.0)
+        model = Model(mesh, LinearElasticMaterial(1000.0, 0.3))
+        for node, (x, y) in enumerate(mesh.nodes):
+            model.prescribe(node, ux=0.01 * x, uy=-0.002 * y)
+        output = ROOT / "tests" / "_temporary_result.vtu"
+        try:
+            model.solve().write(output)
+            exported = meshio.read(output)
+            self.assertIn("displacement", exported.point_data)
+            self.assertIn("von_mises", exported.point_data)
+            self.assertIn("stress", exported.cell_data)
+            self.assertEqual(sum(len(block.data) for block in exported.cells), mesh.element_count)
+        finally:
+            output.unlink(missing_ok=True)
 
 
 class GeometryAndMeshingTests(unittest.TestCase):

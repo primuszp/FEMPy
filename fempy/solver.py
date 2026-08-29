@@ -15,7 +15,7 @@ from enum import Enum
 
 import numpy as np
 from scipy.sparse import csr_matrix
-from scipy.sparse.linalg import LinearOperator, MatrixRankWarning, cg, spsolve
+from scipy.sparse.linalg import LinearOperator, MatrixRankWarning, cg, splu
 
 
 class SolverMethod(str, Enum):
@@ -85,6 +85,7 @@ class SolverInfo:
     iterations: int | None
     residual_norm: float
     relative_residual: float
+    factorization_reused: bool = False
 
     @property
     def matrix_memory_megabytes(self) -> float:
@@ -100,6 +101,99 @@ def sparse_memory_bytes(matrix: csr_matrix) -> int:
     """Megadja a CSR ``data``, ``indices`` és ``indptr`` tömbjeinek összméretét."""
 
     return int(matrix.data.nbytes + matrix.indices.nbytes + matrix.indptr.nbytes)
+
+
+class SparseDirectFactorization:
+    """Újrafelhasználható ritka LU-faktorizáció több jobb oldalhoz.
+
+    Az objektum egyetlen, változatlan redukált merevségi mátrixhoz tartozik.
+    Tipikus felhasználása több olyan terhelési eset megoldása, amelyek hálója,
+    anyaga, vastagsága és kötött szabadságfokai azonosak.
+    """
+
+    def __init__(self, matrix: csr_matrix) -> None:
+        if matrix.shape[0] != matrix.shape[1]:
+            raise ValueError("a sparse factorization requires a square matrix")
+        try:
+            # A SuperLU oszloporientált CSC formátumot vár. Az átalakítás csak
+            # egyszer történik, utána tetszőleges számú jobb oldal oldható meg.
+            self._factor = splu(matrix.tocsc())
+        except RuntimeError as exc:
+            raise ValueError(
+                "the stiffness matrix is singular; check supports and connectivity"
+            ) from exc
+        self.shape = matrix.shape
+
+    def solve(self, right_hand_side: np.ndarray) -> np.ndarray:
+        """Megoldja a korábban faktorizált rendszert egy új jobb oldallal."""
+
+        values = np.asarray(right_hand_side, dtype=float)
+        if values.shape != (self.shape[0],):
+            raise ValueError("right-hand side has an incompatible shape")
+        solution = np.asarray(self._factor.solve(values), dtype=float)
+        if not np.all(np.isfinite(solution)):
+            raise ValueError("the sparse solution contains non-finite values")
+        return solution
+
+
+def _solver_info(
+    matrix: csr_matrix,
+    right_hand_side: np.ndarray,
+    solution: np.ndarray,
+    method: SolverMethod,
+    *,
+    iterations: int | None = None,
+    factorization_reused: bool = False,
+) -> SolverInfo:
+    """Egységes solverdiagnosztikát készít bármely megoldási út eredményéhez."""
+
+    residual = np.asarray(matrix @ solution - right_hand_side)
+    residual_norm = float(np.linalg.norm(residual))
+    rhs_norm = float(np.linalg.norm(right_hand_side))
+    relative_residual = residual_norm / rhs_norm if rhs_norm > 0.0 else residual_norm
+    return SolverInfo(
+        method=method,
+        free_dofs=matrix.shape[0],
+        nonzero_entries=matrix.nnz,
+        matrix_memory_bytes=sparse_memory_bytes(matrix),
+        iterations=iterations,
+        residual_norm=residual_norm,
+        relative_residual=relative_residual,
+        factorization_reused=factorization_reused,
+    )
+
+
+def selected_solver_method(options: SolverOptions, dof_count: int) -> SolverMethod:
+    """Feloldja az ``auto`` beállítást a tényleges megoldási módszerre."""
+
+    if options.method is not SolverMethod.AUTO:
+        return options.method
+    return (
+        SolverMethod.DIRECT
+        if dof_count <= options.direct_dof_limit
+        else SolverMethod.CONJUGATE_GRADIENT
+    )
+
+
+def solve_factorized_system(
+    matrix: csr_matrix,
+    right_hand_side: np.ndarray,
+    factorization: SparseDirectFactorization,
+    *,
+    reused: bool = False,
+) -> tuple[np.ndarray, SolverInfo]:
+    """Megold egy jobb oldalt egy már elkészített ritka faktorizációval."""
+
+    if factorization.shape != matrix.shape:
+        raise ValueError("factorization and matrix shapes do not match")
+    solution = factorization.solve(right_hand_side)
+    return solution, _solver_info(
+        matrix,
+        right_hand_side,
+        solution,
+        SolverMethod.DIRECT,
+        factorization_reused=reused,
+    )
 
 
 def solve_sparse_system(
@@ -118,26 +212,14 @@ def solve_sparse_system(
     """
 
     dof_count = matrix.shape[0]
-    method = options.method
-    if method is SolverMethod.AUTO:
-        # A direkt solver a legrobosztusabb, de a faktorizáció közben fill-in
-        # keletkezhet. Nagy rendszernél a CG kiszámíthatóbb memóriaigényű.
-        method = (
-            SolverMethod.DIRECT
-            if dof_count <= options.direct_dof_limit
-            else SolverMethod.CONJUGATE_GRADIENT
-        )
+    method = selected_solver_method(options, dof_count)
 
     iterations: int | None = None
     if method is SolverMethod.DIRECT:
         with warnings.catch_warnings():
             warnings.simplefilter("error", MatrixRankWarning)
-            try:
-                solution = np.asarray(spsolve(matrix, right_hand_side), dtype=float)
-            except MatrixRankWarning as exc:
-                raise ValueError(
-                    "the stiffness matrix is singular; check supports and connectivity"
-                ) from exc
+            factorization = SparseDirectFactorization(matrix)
+            solution = factorization.solve(right_hand_side)
     else:
         preconditioner = None
         if options.preconditioner is Preconditioner.JACOBI:
@@ -180,19 +262,10 @@ def solve_sparse_system(
 
     if not np.all(np.isfinite(solution)):
         raise ValueError("the sparse solution contains non-finite values")
-    # A solver által jelentett státuszon túl saját maradékot is számítunk,
-    # hogy a felhasználó összehasonlíthassa a különböző módszereket.
-    residual = np.asarray(matrix @ solution - right_hand_side)
-    residual_norm = float(np.linalg.norm(residual))
-    rhs_norm = float(np.linalg.norm(right_hand_side))
-    relative_residual = residual_norm / rhs_norm if rhs_norm > 0.0 else residual_norm
-    info = SolverInfo(
-        method=method,
-        free_dofs=dof_count,
-        nonzero_entries=matrix.nnz,
-        matrix_memory_bytes=sparse_memory_bytes(matrix),
+    return solution, _solver_info(
+        matrix,
+        right_hand_side,
+        solution,
+        method,
         iterations=iterations,
-        residual_norm=residual_norm,
-        relative_residual=relative_residual,
     )
-    return solution, info

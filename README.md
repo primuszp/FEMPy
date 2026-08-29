@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/primuszp/FEMPy/actions/workflows/ci.yml/badge.svg)](https://github.com/primuszp/FEMPy/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-1.1.0-2E86C1.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-1.2.0-2E86C1.svg)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-27AE60.svg)](LICENSE)
 
 A readable, validated, and memory-efficient two-dimensional finite element
@@ -51,10 +51,10 @@ place.
 | Geometry | rectangles, polygons, circles, arcs, holes, local refinement |
 | Constraints | fixed or prescribed `ux`/`uy`, complete named boundaries |
 | Loads | nodal force, traction, normal pressure, body acceleration |
-| Solvers | sparse direct, Jacobi-preconditioned CG, automatic selection |
+| Solvers | sparse direct, Jacobi-preconditioned CG, reusable LU factorization |
 | Results | reaction, strain, stress, principal stress, von Mises stress |
 | Visualization | mesh, boundaries, supports, fields, principal directions, sparse matrices |
-| Import/export | legacy VTK, PROTUS and Myfem/FEMaster compatibility |
+| Import/export | legacy VTK, meshio (Gmsh/BDF/VTU/XDMF), PROTUS and Myfem/FEMaster |
 | Verification | patch test, slender cantilever, Cook's membrane for every element type |
 
 ## Installation
@@ -80,6 +80,12 @@ without it:
 
 ```powershell
 python -m pip install -e .
+```
+
+Install the optional multi-format mesh I/O separately or together with Gmsh:
+
+```powershell
+python -m pip install -e ".[gmsh,io]"
 ```
 
 ## Quick start: a Quad4 cantilever
@@ -128,6 +134,33 @@ result.write_vtk("quad4_cantilever.vtk")
 
 See [`examples/cantilever_quad.py`](examples/cantilever_quad.py) for the
 complete runnable version.
+
+## Multiple load cases
+
+`LoadCase` separates loads and constraints from the shared mesh, material, and
+stiffness. Cases with the same constrained degrees of freedom share one
+reduced matrix and, with the direct solver, one sparse LU factorization.
+
+```python
+model = Model(mesh, steel, thickness=5.0, name="cantilever load cases")
+model.fix_nodes(mesh.nodes_where(x=0.0))
+right_nodes = mesh.nodes_where(x=200.0)
+
+vertical = model.load_case("vertical")
+vertical.add_nodal_loads(right_nodes, fy=-1_000.0 / len(right_nodes))
+
+horizontal = model.load_case("horizontal")
+horizontal.add_nodal_loads(right_nodes, fx=1_000.0 / len(right_nodes))
+
+results = model.solve_cases((vertical, horizontal), reuse_factorization=True)
+
+for name, case_result in results.items():
+    print(name, case_result.solver_info.factorization_reused)
+```
+
+Each case is independent after creation. Different support layouts are
+automatically placed in separate matrix groups. See
+[`examples/load_cases.py`](examples/load_cases.py).
 
 ## T6 meshing with Gmsh
 
@@ -352,6 +385,25 @@ The export preserves the original T3/T6/Q4 cell type and includes
 displacements, reactions, nodal and element fields, principal-stress vectors,
 and separate integration-point results.
 
+### Multi-format mesh exchange
+
+With the optional `io` extra, meshio adds Gmsh, Nastran BDF, VTU, XDMF, and
+many other formats. Imported meshes still pass FEMPy's geometry checks, and
+named Gmsh physical curves become named FEMPy boundaries.
+
+```python
+from fempy import Mesh
+
+mesh = Mesh.read("plate.msh")
+mesh.write("plate.vtu")
+
+result = model.solve()
+result.write("complete_result.vtu")
+```
+
+The dependency-free `result.write_vtk(...)` method remains available for
+human-readable legacy VTK output.
+
 ## Classical verification
 
 ```python
@@ -364,6 +416,20 @@ report.plot()
 
 assert report.passed
 ```
+
+The element implementations can also verify their mathematical identities
+independently of a structural benchmark:
+
+```python
+from fempy import verify_supported_elements
+
+for element_report in verify_supported_elements(sample_count=50):
+    print(element_report.summary())
+    element_report.raise_for_failure()
+```
+
+These checks cover partition of unity, zero gradient sum, numerical shape-
+function derivatives, and exact reference-coordinate mapping.
 
 The nine built-in cases evaluate three problems with Triangle3, Triangle6,
 and Quad4 elements:
@@ -408,6 +474,8 @@ zero-based indices. The imported analysis then uses the sparse solver.
 | [`colored_cantilever.py`](examples/colored_cantilever.py) | complete result gallery | no |
 | [`sparse_matrix_visualization.py`](examples/sparse_matrix_visualization.py) | CSR memory and solver diagnostics | no |
 | [`validate_classic_fem.py`](examples/validate_classic_fem.py) | nine benchmark cases | no |
+| [`load_cases.py`](examples/load_cases.py) | multiple load cases and reused sparse factorization | no |
+| [`element_checks.py`](examples/element_checks.py) | general T3/T6/Q4 mathematical checks | no |
 | [`protus_compat.py`](examples/protus_compat.py) | PROTUS import | no |
 | [`triangle_from_myfem.py`](examples/triangle_from_myfem.py) | Myfem/FEMaster import | no |
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fempy-edu"
-version = "1.1.0"
+version = "1.2.0"
 description = "Readable, validated and sparse 2D finite element library for Python"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,11 +30,12 @@ dependencies = [
 
 [project.optional-dependencies]
 gmsh = ["gmsh>=4.11"]
-dev = ["build>=1.2", "pytest>=8", "ruff>=0.9"]
+io = ["meshio>=5.3"]
+dev = ["build>=1.2", "meshio>=5.3", "pytest>=8", "ruff>=0.9"]
 
 [project.urls]
 Homepage = "https://github.com/primuszp/FEMPy"
-Documentation = "https://github.com/primuszp/FEMPy/tree/main/docs"
+Documentation = "https://github.com/primuszp/FEMPy#readme"
 Issues = "https://github.com/primuszp/FEMPy/issues"
 Source = "https://github.com/primuszp/FEMPy"
 

@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/primuszp/FEMPy/actions/workflows/ci.yml/badge.svg)](https://github.com/primuszp/FEMPy/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB.svg)](https://www.python.org/)
-[![Version](https://img.shields.io/badge/version-1.1.0-2E86C1.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-1.2.0-2E86C1.svg)](pyproject.toml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-27AE60.svg)](LICENSE)
 
 Olvasható, validált és memóriahatékony kétdimenziós végeselemes könyvtár
@@ -49,10 +49,10 @@ futtatható példákat.
 | Geometria | téglalap, sokszög, kör, körív, lyukak, helyi finomítás |
 | Peremfeltétel | fix vagy előírt `ux`/`uy`, név szerinti teljes perem |
 | Terhelés | csomóponti erő, traction, normális nyomás, testgyorsulás |
-| Solver | ritka direkt, Jacobi-előkondicionált CG, automatikus választás |
+| Solver | ritka direkt, Jacobi-előkondicionált CG, újrahasználható LU-faktorizáció |
 | Eredmény | reakció, alakváltozás, feszültség, főfeszültség, von Mises |
 | Megjelenítés | háló, peremek, támaszok, mezők, főirányok, ritka mátrix |
-| Export/import | legacy VTK, PROTUS és Myfem/FEMaster kompatibilitás |
+| Export/import | legacy VTK, meshio (Gmsh/BDF/VTU/XDMF), PROTUS és Myfem/FEMaster |
 | Verifikáció | patch-próba, karcsú konzol, Cook-membrán mindhárom elemre |
 
 ## Telepítés
@@ -78,6 +78,12 @@ használható:
 
 ```powershell
 python -m pip install -e .
+```
+
+A többformátumú háló-I/O külön vagy a Gmsh támogatással együtt telepíthető:
+
+```powershell
+python -m pip install -e ".[gmsh,io]"
 ```
 
 ## Gyors kezdés: Quad4 konzol
@@ -124,6 +130,33 @@ result.write_vtk("quad4_konzol.vtk")
 ```
 
 A teljes futtatható változat: [`examples/cantilever_quad.py`](examples/cantilever_quad.py).
+
+## Több terhelési eset
+
+A `LoadCase` elválasztja a terheket és támaszokat a közös hálótól, anyagtól és
+merevségtől. Azonos kötött szabadságfokoknál az esetek egy redukált mátrixot,
+direkt megoldásnál pedig egyetlen ritka LU-faktorizációt használnak.
+
+```python
+model = Model(mesh, steel, thickness=5.0, name="konzol terhelési esetek")
+model.fix_nodes(mesh.nodes_where(x=0.0))
+right_nodes = mesh.nodes_where(x=200.0)
+
+vertical = model.load_case("függőleges")
+vertical.add_nodal_loads(right_nodes, fy=-1_000.0 / len(right_nodes))
+
+horizontal = model.load_case("vízszintes")
+horizontal.add_nodal_loads(right_nodes, fx=1_000.0 / len(right_nodes))
+
+results = model.solve_cases((vertical, horizontal), reuse_factorization=True)
+
+for name, case_result in results.items():
+    print(name, case_result.solver_info.factorization_reused)
+```
+
+Létrehozás után minden eset független. Az eltérő támaszkészletek automatikusan
+külön mátrixcsoportba kerülnek. Teljes példa:
+[`examples/load_cases.py`](examples/load_cases.py).
 
 ## T6 hálózás Gmsh segítségével
 
@@ -348,6 +381,26 @@ Az export tartalmazza a háló eredeti T3/T6/Q4 cellatípusát, az elmozdulást,
 reakciót, csomóponti és elemmezőket, főfeszültségi vektorokat és a külön
 integrációsponti eredményeket.
 
+### Többformátumú hálócsere
+
+Az opcionális `io` extra a meshio segítségével Gmsh, Nastran BDF, VTU, XDMF és
+sok további formátumot támogat. A beolvasott háló ugyanazokon a FEMPy-
+ellenőrzéseken megy át, a névvel ellátott Gmsh fizikai görbék pedig névvel
+ellátott FEMPy-peremmé alakulnak.
+
+```python
+from fempy import Mesh
+
+mesh = Mesh.read("plate.msh")
+mesh.write("plate.vtu")
+
+result = model.solve()
+result.write("teljes_eredmeny.vtu")
+```
+
+A függőségmentes `result.write_vtk(...)` továbbra is rendelkezésre áll az
+ember által olvasható legacy VTK kimenethez.
+
 ## Klasszikus verifikáció
 
 ```python
@@ -360,6 +413,20 @@ report.plot()
 
 assert report.passed
 ```
+
+Az elemek matematikai azonosságai szerkezeti benchmark nélkül is ellenőrizhetők:
+
+```python
+from fempy import verify_supported_elements
+
+for element_report in verify_supported_elements(sample_count=50):
+    print(element_report.summary())
+    element_report.raise_for_failure()
+```
+
+Az ellenőrzés vizsgálja a partícióegységet, a zérus gradiensösszeget, az
+alakfüggvények numerikus deriváltját és a referenciakoordináták pontos
+leképezését.
 
 A kilenc beépített eset három feladatot vizsgál Triangle3, Triangle6 és Quad4
 elemmel:
@@ -404,6 +471,8 @@ induló indexeire alakítják. Az új számítás már a ritka megoldót haszná
 | [`colored_cantilever.py`](examples/colored_cantilever.py) | teljes eredménygaléria | nem |
 | [`sparse_matrix_visualization.py`](examples/sparse_matrix_visualization.py) | CSR-memória és solverdiagnosztika | nem |
 | [`validate_classic_fem.py`](examples/validate_classic_fem.py) | kilenc benchmark futtatása | nem |
+| [`load_cases.py`](examples/load_cases.py) | több terhelési eset és megosztott ritka faktorizáció | nem |
+| [`element_checks.py`](examples/element_checks.py) | általános T3/T6/Q4 matematikai ellenőrzések | nem |
 | [`protus_compat.py`](examples/protus_compat.py) | PROTUS-import | nem |
 | [`triangle_from_myfem.py`](examples/triangle_from_myfem.py) | Myfem/FEMaster-import | nem |
 

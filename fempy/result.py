@@ -250,6 +250,18 @@ class AnalysisResult:
 
         return write_vtk(self, path)
 
+    def write(self, path: str | Path) -> Path:
+        """Eredményt ír a kiterjesztés által választott meshio-formátumba.
+
+        Például ``result.write("result.vtu")`` tömör XML-VTK fájlt készít,
+        míg a meglévő :meth:`write_vtk` továbbra is függőségmentes, olvasható
+        legacy VTK kimenetet ad.
+        """
+
+        from .meshio_adapter import write_result
+
+        return write_result(self, path)
+
     def plot(
         self,
         *,

@@ -16,12 +16,14 @@ merevségi mátrix csak a ``stiffness_matrix()`` explicit kérésére épül fel
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 import numpy as np
 from scipy.sparse import coo_matrix, csr_matrix
 
 from .elements import Triangle6
+from .loadcase import LoadCase
 from .material import LinearElasticMaterial, PlaneCondition
 from .mesh import Mesh
 from .result import (
@@ -30,7 +32,15 @@ from .result import (
     IntegrationPointResult,
     principal_values,
 )
-from .solver import SolverInfo, SolverMethod, SolverOptions, solve_sparse_system
+from .solver import (
+    SolverInfo,
+    SolverMethod,
+    SolverOptions,
+    SparseDirectFactorization,
+    selected_solver_method,
+    solve_factorized_system,
+    solve_sparse_system,
+)
 
 
 def _element_boundary_edges(element) -> tuple[tuple[int, ...], ...]:
@@ -314,6 +324,100 @@ class Model:
             style=style,
         )
 
+    def load_case(self, name: str, *, inherit: bool = True) -> LoadCase:
+        """Új, a hálót és anyagot megosztó terhelési esetet készít.
+
+        Args:
+            name: Az eset egyedi, ember által olvasható neve.
+            inherit: Ha igaz, a modellen már megadott támaszokat, terheket és
+                testgyorsulást kezdeti állapotként átmásolja.
+
+        A visszaadott eset ezután függetlenül módosítható. Több eset hatékony
+        közös megoldásához a :meth:`solve_cases` metódus használható.
+        """
+
+        return LoadCase(self, name, inherit=inherit)
+
+    def solve_cases(
+        self,
+        cases: Iterable[LoadCase],
+        solver: SolverOptions | SolverMethod | str | None = None,
+        *,
+        reuse_factorization: bool = True,
+    ) -> dict[str, AnalysisResult]:
+        """Több terhelési esetet old meg közös ritka merevségi mátrixszal.
+
+        Az azonos kötött szabadságfokokat használó eseteket egy csoportba
+        rendezi. Csoportonként a ``K_ff`` csak egyszer épül fel; direkt solver
+        esetén az LU-faktorizáció is egyszer készül el, majd minden új jobb
+        oldal újrafelhasználja. Eltérő támaszkészlet automatikusan külön csoport.
+
+        Returns:
+            A bemeneti sorrendet megtartó ``{case_name: AnalysisResult}`` szótár.
+        """
+
+        case_list = tuple(cases)
+        if not case_list:
+            raise ValueError("at least one load case is required")
+        if any(not isinstance(case, LoadCase) for case in case_list):
+            raise TypeError("solve_cases accepts LoadCase objects")
+        if any(case.model is not self for case in case_list):
+            raise ValueError("every load case must belong to this model")
+        names = [case.name for case in case_list]
+        if len(set(names)) != len(names):
+            raise ValueError("load-case names must be unique")
+        options = self._solver_options(solver)
+
+        groups: dict[tuple[int, ...], list[LoadCase]] = {}
+        for case in case_list:
+            definition = case._definition
+            if not definition._prescribed:
+                raise ValueError(f"load case {case.name!r} has no displacement boundary conditions")
+            signature = tuple(sorted(definition._prescribed))
+            groups.setdefault(signature, []).append(case)
+
+        solved: dict[str, AnalysisResult] = {}
+        for group in groups.values():
+            first = group[0]._definition
+            _, free, free_map, _ = first._dof_partition()
+            matrix = first._assemble_reduced_stiffness(free, free_map)
+            method = selected_solver_method(options, len(free))
+            factorization = None
+            if len(free) and reuse_factorization and method is SolverMethod.DIRECT:
+                factorization = SparseDirectFactorization(matrix)
+
+            for index, case in enumerate(group):
+                definition = case._definition
+                _, case_free, case_free_map, prescribed = definition._dof_partition()
+                # A csoportosítás miatt ezek értéke azonos; az ellenőrzés a
+                # későbbi refaktorálások ellen is védi a faktorizációt.
+                if not np.array_equal(case_free, free) or not np.array_equal(
+                    case_free_map, free_map
+                ):
+                    raise RuntimeError("incompatible load cases were grouped together")
+                forces = definition._loads + definition._body_force_vector()
+                right_hand_side = definition._assemble_reduced_force(
+                    forces, free, free_map, prescribed
+                )
+                displacement = prescribed.copy()
+                if len(free):
+                    if factorization is not None:
+                        displacement[free], solver_info = solve_factorized_system(
+                            matrix,
+                            right_hand_side,
+                            factorization,
+                            reused=index > 0,
+                        )
+                    else:
+                        displacement[free], solver_info = solve_sparse_system(
+                            matrix, right_hand_side, options
+                        )
+                else:
+                    solver_info = definition._empty_solver_info(options)
+                reaction = definition._internal_force_vector(displacement) - forces
+                solved[case.name] = definition._recover_results(displacement, reaction, solver_info)
+        return {case.name: solved[case.name] for case in case_list}
+
     def solve(self, solver: SolverOptions | SolverMethod | str | None = None) -> AnalysisResult:
         """Összeállítja és megoldja a statikai egyenletrendszert.
 
@@ -333,12 +437,7 @@ class Model:
 
         if not self._prescribed:
             raise ValueError("the model has no displacement boundary conditions")
-        if solver is None:
-            options = SolverOptions()
-        elif isinstance(solver, SolverOptions):
-            options = solver
-        else:
-            options = SolverOptions(method=solver)
+        options = self._solver_options(solver)
         forces = self._loads + self._body_force_vector()
         # A free_map minden globális szabadságfokhoz megmondja a redukált
         # sorszámot. Kötött szabadságfoknál -1, így nincs szükség szótárakra.
@@ -354,22 +453,40 @@ class Model:
                 reduced_stiffness, reduced_force, options
             )
         else:
-            method = SolverMethod.DIRECT if options.method is SolverMethod.AUTO else options.method
-            solver_info = SolverInfo(
-                method=method,
-                free_dofs=0,
-                nonzero_entries=0,
-                matrix_memory_bytes=0,
-                iterations=None,
-                residual_norm=0.0,
-                relative_residual=0.0,
-            )
+            solver_info = self._empty_solver_info(options)
 
         # Reakció = belső csomóponti erő - külső erő. A belső erőt újra
         # elemenként összegezzük, ezért a reakcióhoz sem kell teljes globális K.
         internal_force = self._internal_force_vector(displacement)
         reaction = internal_force - forces
         return self._recover_results(displacement, reaction, solver_info)
+
+    @staticmethod
+    def _solver_options(
+        solver: SolverOptions | SolverMethod | str | None,
+    ) -> SolverOptions:
+        """A kényelmes rövid solver-megadást teljes opcióobjektummá alakítja."""
+
+        if solver is None:
+            return SolverOptions()
+        if isinstance(solver, SolverOptions):
+            return solver
+        return SolverOptions(method=solver)
+
+    @staticmethod
+    def _empty_solver_info(options: SolverOptions) -> SolverInfo:
+        """Diagnosztika olyan modellhez, amelyben nincs szabad szabadságfok."""
+
+        method = SolverMethod.DIRECT if options.method is SolverMethod.AUTO else options.method
+        return SolverInfo(
+            method=method,
+            free_dofs=0,
+            nonzero_entries=0,
+            matrix_memory_bytes=0,
+            iterations=None,
+            residual_norm=0.0,
+            relative_residual=0.0,
+        )
 
     def _recover_results(
         self,
@@ -589,6 +706,17 @@ class Model:
         memóriát. Az összeállítás ideiglenes tárhelye is pontosan előre méretezett.
         """
 
+        matrix = self._assemble_reduced_stiffness(free, free_map)
+        right_hand_side = self._assemble_reduced_force(forces, free, free_map, prescribed)
+        return matrix, right_hand_side
+
+    def _assemble_reduced_stiffness(
+        self,
+        free: np.ndarray,
+        free_map: np.ndarray,
+    ) -> csr_matrix:
+        """Közvetlenül összeállítja a szabad szabadságfokok ``K_ff`` mátrixát."""
+
         constitutive = self.material.constitutive_matrix(self.condition)
         # Első, olcsó topológiai menet: pontosan megszámoljuk, hány lokális
         # szabad-szabad bejegyzést kell tárolni a COO összeállításhoz.
@@ -602,7 +730,6 @@ class Model:
         rows = np.empty(entry_count, dtype=np.int64)
         columns = np.empty(entry_count, dtype=np.int64)
         values = np.empty(entry_count, dtype=float)
-        right_hand_side = forces[free].copy()
         cursor = 0
         for element in self.mesh.elements:
             node_ids = np.asarray(element.node_ids)
@@ -611,12 +738,6 @@ class Model:
             dofs = np.column_stack((2 * node_ids, 2 * node_ids + 1)).ravel()
             mapped = free_map[dofs]
             local_free = np.flatnonzero(mapped >= 0)
-            local_constrained = np.flatnonzero(mapped < 0)
-            if len(local_constrained) and len(local_free):
-                right_hand_side[mapped[local_free]] -= (
-                    element_matrix[np.ix_(local_free, local_constrained)]
-                    @ prescribed[dofs[local_constrained]]
-                )
             if not len(local_free):
                 continue
             mapped_free = mapped[local_free]
@@ -632,7 +753,43 @@ class Model:
             shape=(len(free), len(free)),
         ).tocsr()
         matrix.eliminate_zeros()
-        return matrix, right_hand_side
+        return matrix
+
+    def _assemble_reduced_force(
+        self,
+        forces: np.ndarray,
+        free: np.ndarray,
+        free_map: np.ndarray,
+        prescribed: np.ndarray,
+    ) -> np.ndarray:
+        """Elkészíti a ``f_f - K_fc u_c`` redukált jobb oldalt.
+
+        A gyakori, nulla értékű támaszoknál nincs szükség elemi mátrixra: a
+        módszer egyszerűen a külső erő szabad komponenseit másolja. Nem nulla
+        előírt elmozdulásnál csak a szükséges ``K_fc u_c`` tagokat számítja ki.
+        """
+
+        right_hand_side = forces[free].copy()
+        if not np.any(prescribed):
+            return right_hand_side
+        constitutive = self.material.constitutive_matrix(self.condition)
+        for element in self.mesh.elements:
+            node_ids = np.asarray(element.node_ids)
+            dofs = np.column_stack((2 * node_ids, 2 * node_ids + 1)).ravel()
+            mapped = free_map[dofs]
+            local_free = np.flatnonzero(mapped >= 0)
+            local_constrained = np.flatnonzero(mapped < 0)
+            if not len(local_free) or not len(local_constrained):
+                continue
+            constrained_values = prescribed[dofs[local_constrained]]
+            if not np.any(constrained_values):
+                continue
+            coordinates = self.mesh.nodes[node_ids]
+            element_matrix = element.stiffness(coordinates, constitutive, self.thickness)
+            right_hand_side[mapped[local_free]] -= (
+                element_matrix[np.ix_(local_free, local_constrained)] @ constrained_values
+            )
+        return right_hand_side
 
     def _internal_force_vector(self, displacement: np.ndarray) -> np.ndarray:
         """Elemenként összeállítja a ``K @ u`` belső csomóponti erővektort."""

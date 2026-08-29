@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from types import MappingProxyType
 
 import numpy as np
@@ -164,6 +165,26 @@ class Mesh:
             show_labels=show_labels,
             style=style,
         )
+
+    @classmethod
+    def read(cls, path: str | Path) -> Mesh:
+        """Hálót olvas Gmsh, BDF, VTU vagy más meshio-formátumból.
+
+        A funkcióhoz az opcionális ``io`` extra szükséges. A beolvasott háló
+        ugyanazon geometriai és topológiai ellenőrzéseken megy át, mint a
+        kézzel vagy Gmsh segítségével létrehozott :class:`Mesh`.
+        """
+
+        from .meshio_adapter import read_mesh
+
+        return read_mesh(path)
+
+    def write(self, path: str | Path) -> Path:
+        """A hálót a fájlkiterjesztés által választott meshio-formátumba írja."""
+
+        from .meshio_adapter import write_mesh
+
+        return write_mesh(self, path)
 
 
 def _validate_node_sets(

@@ -5,10 +5,12 @@ magas szintű fogalmakat exportálja. Így a felhasználónak nem kell belső
 modulútvonalakat ismernie; a részletes implementáció az almodulokban marad.
 """
 
+from .element_checks import ElementCheckReport, verify_element, verify_supported_elements
 from .elements import Quad4, Triangle3, Triangle6
 from .geometry import CircularArc2D, Geometry2D, LineSegment2D
 from .gmsh import GmshMesher, GmshNotInstalledError
 from .legacy import load_myfem, load_protus
+from .loadcase import LoadCase
 from .material import LinearElasticMaterial, PlaneCondition
 from .mesh import (
     Mesh,
@@ -17,6 +19,7 @@ from .mesh import (
     rectangular_tri_mesh,
     to_quadratic_tri_mesh,
 )
+from .meshio_adapter import MeshioNotInstalledError
 from .model import Model
 from .plotting import (
     PlotStyle,
@@ -44,6 +47,7 @@ __all__ = [
     "AnalysisResult",
     "CircularArc2D",
     "ConvergenceSample",
+    "ElementCheckReport",
     "ElementResult",
     "Geometry2D",
     "GmshMesher",
@@ -51,7 +55,9 @@ __all__ = [
     "IntegrationPointResult",
     "LineSegment2D",
     "LinearElasticMaterial",
+    "LoadCase",
     "Mesh",
+    "MeshioNotInstalledError",
     "Model",
     "PlaneCondition",
     "PlotStyle",
@@ -76,6 +82,8 @@ __all__ = [
     "rectangular_tri_mesh",
     "run_classic_validations",
     "to_quadratic_tri_mesh",
+    "verify_element",
+    "verify_supported_elements",
 ]
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
